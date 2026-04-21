@@ -39,3 +39,7 @@ export function getEnv(): Env {
     }
     return validatedEnv;
 }
+
+export function resetEnvCache(): void {
+    validatedEnv = null;
+}

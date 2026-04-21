@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { loadEnv } from '../../src/config.js';
+import { loadEnv, resetEnvCache } from '../../src/config.js';
 
 describe('config', () => {
     const originalEnv = process.env;
 
     beforeEach(() => {
         process.env = { ...originalEnv };
-        // Clear any cached env
-        delete (require.cache[require.resolve('../../src/config.js')]);
+        // Clear cached validatedEnv
+        resetEnvCache();
     });
 
     afterEach(() => {
