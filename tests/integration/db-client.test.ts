@@ -16,15 +16,12 @@ async function applyMigrations(client: DatabaseClient) {
     for (const file of files) {
         const migrationPath = path.join(migrationsDir, file);
         const migrationSql = await fs.readFile(migrationPath, 'utf8');
-        const statements = migrationSql.split(';').filter(s => s.trim());
-        for (const stmt of statements) {
-            try {
-                await client.query(stmt);
-            } catch (err) {
-                // Ignore duplicate extension/object errors
-                if (!(err instanceof Error && err.message.includes('already exists'))) {
-                    throw err;
-                }
+        try {
+            await client.query(migrationSql);
+        } catch (err) {
+            // Ignore duplicate extension/object errors
+            if (!(err instanceof Error && err.message.includes('already exists'))) {
+                throw err;
             }
         }
     }
