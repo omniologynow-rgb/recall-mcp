@@ -33,6 +33,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@supabase/supabase-js": "^2.104.0",
     "bcrypt": "^6.0.0",
+    "lru-cache": "^11.3.5",
     "openai": "^6.34.0",
     "pg": "^8.20.0",
     "pgvector": "^0.2.1",
