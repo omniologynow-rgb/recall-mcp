@@ -44,6 +44,7 @@ describe('DatabaseClient with RLS', () => {
 
         const connectionString = `postgresql://test:test@${container.getHost()}:${container.getPort()}/testdb`;
         dbClient = new DatabaseClient(connectionString);
+        await dbClient.registerVectorTypes();
 
         await applyMigrations(dbClient);
 

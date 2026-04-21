@@ -1,4 +1,5 @@
 import { Pool, PoolClient, QueryResult } from 'pg';
+import pgvector from 'pgvector/pg';
 import { Embedding } from '../embedder/index.js';
 
 export interface MemoryRow {
@@ -41,6 +42,19 @@ export class DatabaseClient {
         });
     }
 
+    static async registerVectorTypes(pool: Pool): Promise<void> {
+        const client = await pool.connect();
+        try {
+            await pgvector.registerType(client);
+        } finally {
+            client.release();
+        }
+    }
+
+    async registerVectorTypes(): Promise<void> {
+        await DatabaseClient.registerVectorTypes(this.pool);
+    }
+
     async query<T = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
         const client = await this.pool.connect();
         try {
@@ -51,10 +65,15 @@ export class DatabaseClient {
     }
 
     async withUserContext<T>(userId: string, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+        // Validate userId is a UUID (format)
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+            throw new Error(`Invalid user ID format: ${userId}`);
+        }
         const client = await this.pool.connect();
         try {
             await client.query('BEGIN');
-            await client.query('SET LOCAL app.current_user_id = $1', [userId]);
+            // SET LOCAL does not support prepared statement parameters; interpolate safely.
+            await client.query(`SET LOCAL app.current_user_id = '${userId}'`);
             const result = await fn(client);
             await client.query('COMMIT');
             return result;
