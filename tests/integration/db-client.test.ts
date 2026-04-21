@@ -51,7 +51,7 @@ describe('DatabaseClient with RLS', () => {
 
         // Create a non‑superuser, non‑owner application role for RLS enforcement tests
         await adminClient.query(`
-            CREATE ROLE recall_app_test LOGIN PASSWORD 'test' NOBYPASSRLS;
+            CREATE ROLE IF NOT EXISTS recall_app_test LOGIN PASSWORD 'test' NOBYPASSRLS;
             GRANT USAGE ON SCHEMA public TO recall_app_test;
             GRANT SELECT, INSERT, UPDATE, DELETE ON users, api_keys, memories, usage_events TO recall_app_test;
             GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO recall_app_test;

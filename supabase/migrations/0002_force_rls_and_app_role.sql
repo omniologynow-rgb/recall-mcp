@@ -8,8 +8,7 @@ ALTER TABLE usage_events FORCE ROW LEVEL SECURITY;
 -- This role will be used by the RecallMCP server to connect to the database.
 -- The role must have appropriate permissions to perform CRUD on the tables.
 -- We assume the migration is run as a superuser (postgres).
-CREATE ROLE IF NOT EXISTS recall_app NOLOGIN NOBYPASSRLS;
-ALTER ROLE recall_app NOBYPASSRLS;
+CREATE ROLE recall_app NOLOGIN NOBYPASSRLS;
 
 -- Grant usage on the schema (public) and necessary table permissions
 GRANT USAGE ON SCHEMA public TO recall_app;
