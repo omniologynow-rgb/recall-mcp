@@ -51,7 +51,8 @@ describe('DatabaseClient with RLS', () => {
 
         // Create a non‑superuser, non‑owner application role for RLS enforcement tests
         await adminClient.query(`
-            CREATE ROLE IF NOT EXISTS recall_app_test LOGIN PASSWORD 'test' NOBYPASSRLS;
+            DROP ROLE IF EXISTS recall_app_test;
+            CREATE ROLE recall_app_test LOGIN PASSWORD 'test' NOBYPASSRLS;
             GRANT USAGE ON SCHEMA public TO recall_app_test;
             GRANT SELECT, INSERT, UPDATE, DELETE ON users, api_keys, memories, usage_events TO recall_app_test;
             GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO recall_app_test;
@@ -196,15 +197,15 @@ describe('DatabaseClient with RLS', () => {
         });
         // User A attempts to UPDATE the memory's user_id to user B's ID
         // This should be blocked by WITH CHECK clause of the RLS policy
-        const updated = await dbClient.withUserContext(userAId, async (client) => {
-            const res = await client.query(
-                'UPDATE memories SET user_id = $1 WHERE id = $2 RETURNING id',
-                [userBId, memoryId]
-            );
-            return res.rowCount;
-        });
-        // Expect zero rows updated
-        expect(updated).toBe(0);
+        await expect(
+            dbClient.withUserContext(userAId, async (client) => {
+                const res = await client.query(
+                    'UPDATE memories SET user_id = $1 WHERE id = $2 RETURNING id',
+                    [userBId, memoryId]
+                );
+                return res.rowCount;
+            })
+        ).rejects.toThrow();
         // Verify the memory still belongs to user A
         const memories = await dbClient.withUserContext(userAId, async (client) => {
             const res = await client.query('SELECT user_id FROM memories WHERE id = $1', [memoryId]);
