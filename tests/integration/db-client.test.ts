@@ -29,6 +29,7 @@ async function applyMigrations(client: DatabaseClient) {
 
 describe('DatabaseClient with RLS', () => {
     let container: any;
+    let adminClient: DatabaseClient;
     let dbClient: DatabaseClient;
     let userAId: string;
     let userBId: string;
@@ -43,35 +44,51 @@ describe('DatabaseClient with RLS', () => {
             .start();
 
         const connectionString = `postgresql://test:test@${container.getHost()}:${container.getPort()}/testdb`;
-        dbClient = new DatabaseClient(connectionString);
-        await dbClient.registerVectorTypes();
+        adminClient = new DatabaseClient(connectionString);
 
-        await applyMigrations(dbClient);
+        await applyMigrations(adminClient);
+        await adminClient.registerVectorTypes();
+
+        // Create a non‑superuser, non‑owner application role for RLS enforcement tests
+        await adminClient.query(`
+            CREATE ROLE recall_app_test LOGIN PASSWORD 'test' NOBYPASSRLS;
+            GRANT USAGE ON SCHEMA public TO recall_app_test;
+            GRANT SELECT, INSERT, UPDATE, DELETE ON users, api_keys, memories, usage_events TO recall_app_test;
+            GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO recall_app_test;
+        `);
 
         // Temporarily disable RLS to insert test users (since no app.current_user_id set)
-        await dbClient.query('ALTER TABLE users DISABLE ROW LEVEL SECURITY');
-        await dbClient.query('ALTER TABLE api_keys DISABLE ROW LEVEL SECURITY');
-        await dbClient.query('ALTER TABLE memories DISABLE ROW LEVEL SECURITY');
-        await dbClient.query('ALTER TABLE usage_events DISABLE ROW LEVEL SECURITY');
+        await adminClient.query('ALTER TABLE users DISABLE ROW LEVEL SECURITY');
+        await adminClient.query('ALTER TABLE api_keys DISABLE ROW LEVEL SECURITY');
+        await adminClient.query('ALTER TABLE memories DISABLE ROW LEVEL SECURITY');
+        await adminClient.query('ALTER TABLE usage_events DISABLE ROW LEVEL SECURITY');
 
-        const userARes = await dbClient.query<{ id: string }>(
+        const userARes = await adminClient.query<{ id: string }>(
             `INSERT INTO users (email, tier) VALUES ('userA@test.com', 'free') RETURNING id`
         );
         userAId = userARes.rows[0].id;
-        const userBRes = await dbClient.query<{ id: string }>(
+        const userBRes = await adminClient.query<{ id: string }>(
             `INSERT INTO users (email, tier) VALUES ('userB@test.com', 'free') RETURNING id`
         );
         userBId = userBRes.rows[0].id;
 
-        await dbClient.query('ALTER TABLE users ENABLE ROW LEVEL SECURITY');
-        await dbClient.query('ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY');
-        await dbClient.query('ALTER TABLE memories ENABLE ROW LEVEL SECURITY');
-        await dbClient.query('ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY');
+        await adminClient.query('ALTER TABLE users ENABLE ROW LEVEL SECURITY');
+        await adminClient.query('ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY');
+        await adminClient.query('ALTER TABLE memories ENABLE ROW LEVEL SECURITY');
+        await adminClient.query('ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY');
+
+        // Create the application client that will be used for all RLS tests
+        const appConnectionString = `postgresql://recall_app_test:test@${container.getHost()}:${container.getPort()}/testdb`;
+        dbClient = new DatabaseClient(appConnectionString);
+        await dbClient.registerVectorTypes();
     }, 30000); // 30 second timeout
 
     afterAll(async () => {
         if (dbClient) {
             await dbClient.close();
+        }
+        if (adminClient) {
+            await adminClient.close();
         }
         if (container) {
             await container.stop();
