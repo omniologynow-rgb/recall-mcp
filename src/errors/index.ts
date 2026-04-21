@@ -1,0 +1,1 @@
+export { ToolError, type McpErrorShape } from './tool-error.js';
