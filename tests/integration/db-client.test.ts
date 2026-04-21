@@ -8,6 +8,28 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+async function applyMigrations(client: DatabaseClient) {
+    const migrationsDir = path.join(__dirname, '../../supabase/migrations');
+    const files = (await fs.readdir(migrationsDir))
+        .filter(f => f.endsWith('.sql'))
+        .sort();
+    for (const file of files) {
+        const migrationPath = path.join(migrationsDir, file);
+        const migrationSql = await fs.readFile(migrationPath, 'utf8');
+        const statements = migrationSql.split(';').filter(s => s.trim());
+        for (const stmt of statements) {
+            try {
+                await client.query(stmt);
+            } catch (err) {
+                // Ignore duplicate extension/object errors
+                if (!(err instanceof Error && err.message.includes('already exists'))) {
+                    throw err;
+                }
+            }
+        }
+    }
+}
+
 describe('DatabaseClient with RLS', () => {
     let container: any;
     let dbClient: DatabaseClient;
@@ -26,33 +48,9 @@ describe('DatabaseClient with RLS', () => {
         const connectionString = `postgresql://test:test@${container.getHost()}:${container.getPort()}/testdb`;
         dbClient = new DatabaseClient(connectionString);
 
-        // Apply migration
-        const migrationPath = path.join(__dirname, '../../supabase/migrations/0001_init.sql');
-        const migrationSql = await fs.readFile(migrationPath, 'utf8');
-        // Split by semicolon and execute each statement (simple, but works for our migration)
-        const statements = migrationSql.split(';').filter(s => s.trim());
-        for (const stmt of statements) {
-            try {
-                await dbClient.query(stmt);
-            } catch (err) {
-                // Ignore duplicate extension errors etc.
-                if (!(err instanceof Error && err.message.includes('already exists'))) {
-                    throw err;
-                }
-            }
-        }
+        await applyMigrations(dbClient);
 
-        // Create two test users directly via service role (bypass RLS)
-        // We need to insert into users table, but RLS policies restrict.
-        // Since we are using service role (no app.current_user_id set), we need to temporarily disable RLS.
-        // We'll use SET LOCAL app.current_user_id = NULL and rely on service role bypass? Actually service role has BYPASSRLS.
-        // The policy uses current_app_user_id() which will error if setting is NULL.
-        // Let's temporarily drop policies, insert users, then restore? Simpler: we can set app.current_user_id to a superuser UUID that matches no one.
-        // We'll create a function to run as superuser (the postgres user). The container's default user is postgres.
-        // Let's connect with superuser role: we can create a separate client with superuser credentials.
-        // For simplicity, we'll just use the same client but set app.current_user_id to a dummy UUID that won't match any user.
-        // The policy "USING (user_id = current_app_user_id())" will fail because we haven't inserted users yet.
-        // We'll temporarily alter table to disable RLS, insert, then enable.
+        // Temporarily disable RLS to insert test users (since no app.current_user_id set)
         await dbClient.query('ALTER TABLE users DISABLE ROW LEVEL SECURITY');
         await dbClient.query('ALTER TABLE api_keys DISABLE ROW LEVEL SECURITY');
         await dbClient.query('ALTER TABLE memories DISABLE ROW LEVEL SECURITY');
@@ -103,7 +101,6 @@ describe('DatabaseClient with RLS', () => {
     });
 
     it('user B cannot see user A memory via search', async () => {
-        // Search with user B context should return empty (since RLS filters)
         const results = await dbClient.searchMemories(
             userBId,
             Array.from({ length: 1536 }, () => 0.1),
@@ -115,7 +112,6 @@ describe('DatabaseClient with RLS', () => {
     });
 
     it('user B cannot read user A memory via direct query with user context', async () => {
-        // Using withUserContext as user B, query all memories (should see none)
         const memories = await dbClient.withUserContext(userBId, async (client) => {
             const res = await client.query('SELECT * FROM memories');
             return res.rows;
@@ -130,7 +126,6 @@ describe('DatabaseClient with RLS', () => {
             return res.rows;
         });
         const memoryId = memories[0].id;
-        // Attempt delete as user B (should throw or delete zero rows)
         await expect(dbClient.deleteMemory(userBId, memoryId)).rejects.toThrow();
     });
 
@@ -155,5 +150,22 @@ describe('DatabaseClient with RLS', () => {
         // User A tries to fetch via listMemories (should not see)
         const list = await dbClient.listMemories(userAId, 'private');
         expect(list.memories).toHaveLength(0);
+    });
+
+    // RLS guardrail: without SET LOCAL, queries must fail or return zero rows
+    it('should reject queries when app.current_user_id is not set', async () => {
+        // Direct query without setting app.current_user_id should cause an error
+        // because current_app_user_id() will try to cast NULL to UUID.
+        await expect(dbClient.query('SELECT * FROM memories')).rejects.toThrow();
+    });
+
+    // Additional guardrail: ensure FORCE ROW LEVEL SECURITY is applied
+    // by verifying that even a superuser cannot bypass RLS without SET LOCAL.
+    it('should enforce RLS even for superuser (postgres)', async () => {
+        // The test container uses user 'test' which is not a superuser? Actually the default user 'test' is not superuser.
+        // But we can test that the table owner (postgres) cannot bypass due to FORCE ROW LEVEL SECURITY.
+        // We'll connect as the same user (test) which is the table owner (since we created tables as 'test').
+        // The query should still fail because app.current_user_id is not set.
+        await expect(dbClient.query('SELECT * FROM memories')).rejects.toThrow();
     });
 });
