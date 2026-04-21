@@ -1,4 +1,4 @@
-import { Embedding, Embedder } from './index.js';
+import type { Embedding, Embedder } from './index.js';
 
 export class MockEmbedder implements Embedder {
     private dimension: number;

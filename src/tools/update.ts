@@ -1,5 +1,5 @@
 import { DatabaseClient } from '../db/client.js';
-import { Embedder } from '../embedder/index.js';
+import type { Embedder } from '../embedder/index.js';
 import { AuthService } from '../auth/index.js';
 import { ToolError } from '../errors/tool-error.js';
 import { toSql } from 'pgvector';

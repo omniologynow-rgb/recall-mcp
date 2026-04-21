@@ -1,7 +1,7 @@
 import { DatabaseClient } from '../db/client.js';
-import { Embedder } from '../embedder/index.js';
+import type { Embedder } from '../embedder/index.js';
 import { AuthService } from '../auth/index.js';
-import { ToolError } from '../errors/tool-error.js';
+
 import { toSql } from 'pgvector';
 
 export interface RecallResult {
@@ -54,7 +54,7 @@ export class RecallTool {
                     created_at
                  FROM memories
                  WHERE user_id = $2
-                   AND ($3 = 'default' OR namespace = $3)
+                   AND namespace = $3
                    AND 1 - (embedding <=> $1::vector) >= $4
                  ORDER BY similarity DESC
                  LIMIT $5`,

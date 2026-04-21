@@ -102,25 +102,43 @@ describe('Recall tool integration', () => {
     });
 
     it('should return similar memories for a query', async () => {
-        // MockEmbedder returns zero vector for any query; our random vectors will have low similarity
-        // We'll adjust the test to expect empty results when similarity below min_similarity (default 0.7)
-        const results = await recallTool.recall(apiKey, 'fox');
+        // MockEmbedder returns deterministic embedding based on text hash
+        // Similarity between query 'fox' and seeded memories may be high
+        const results = await recallTool.recall(apiKey, 'fox', 'general');
         expect(results).toBeInstanceOf(Array);
-        // Expect empty because similarity low
+        // Should have at least one result (similarity >= 0.7)
+        expect(results.length).toBeGreaterThan(0);
+        // Each result should have required fields
+        results.forEach(r => {
+            expect(r).toHaveProperty('id');
+            expect(r).toHaveProperty('content');
+            expect(r).toHaveProperty('similarity');
+            expect(r.similarity).toBeGreaterThanOrEqual(0.7);
+            expect(r).toHaveProperty('namespace');
+            expect(r.namespace).toBe('general');
+            expect(r).toHaveProperty('created_at');
+        });
+    });
+
+    it('should filter by minSimilarity', async () => {
+        // Set minSimilarity high enough to exclude all memories
+        const results = await recallTool.recall(apiKey, 'fox', 'general', 10, 0.99);
         expect(results).toHaveLength(0);
     });
 
     it('should respect namespace filter', async () => {
         // Search in 'animals' namespace
         const results = await recallTool.recall(apiKey, 'fox', 'animals');
-        // Expect maybe one result if similarity high enough, but with random vectors likely zero
-        // We'll just test that the call doesn't throw
         expect(results).toBeInstanceOf(Array);
+        // All returned memories should belong to 'animals' namespace
+        results.forEach(r => {
+            expect(r.namespace).toBe('animals');
+        });
     });
 
     it('should enforce limit parameter', async () => {
         // Limit 1
-        const results = await recallTool.recall(apiKey, 'fox', 'default', 1);
+        const results = await recallTool.recall(apiKey, 'fox', 'general', 1);
         expect(results.length).toBeLessThanOrEqual(1);
     });
 

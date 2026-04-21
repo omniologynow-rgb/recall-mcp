@@ -1,6 +1,6 @@
 import { DatabaseClient } from '../db/client.js';
 import { AuthService } from '../auth/index.js';
-import { ToolError } from '../errors/tool-error.js';
+
 
 export interface MemoryListItem {
     id: string;
@@ -30,7 +30,7 @@ export class ListMemoriesTool {
                 `SELECT id, content, namespace, created_at, updated_at
                  FROM memories
                  WHERE user_id = $1
-                   AND ($2 = 'default' OR namespace = $2)
+                   AND namespace = $2
                  ORDER BY created_at ASC
                  LIMIT $3 OFFSET $4`,
                 [userId, namespace, limit, offset]

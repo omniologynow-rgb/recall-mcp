@@ -1,7 +1,8 @@
-import { Pool, PoolClient, QueryResult } from 'pg';
+import { Pool } from 'pg';
+import type { PoolClient, QueryResult, QueryResultRow } from 'pg';
 import pgvector from 'pgvector/pg';
 import { toSql } from 'pgvector';
-import { Embedding } from '../embedder/index.js';
+
 
 export interface MemoryRow {
     id: string;
@@ -56,7 +57,7 @@ export class DatabaseClient {
         await DatabaseClient.registerVectorTypes(this.pool);
     }
 
-    async query<T = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
+    async query<T extends QueryResultRow = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
         const client = await this.pool.connect();
         try {
             return await client.query<T>(text, params);
@@ -261,7 +262,7 @@ export class DatabaseClient {
                 [userId, namespace, embedding, limit]
             );
         });
-        const ids = result.rows.map(row => row.id);
+        const ids = result.rows.map((row: any) => row.id);
         if (ids.length === 0) {
             return [];
         }

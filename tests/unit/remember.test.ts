@@ -32,10 +32,33 @@ describe('RememberTool', () => {
         (mockAuthService.authenticate as any).mockResolvedValue({ userId, tier });
         // Default mock for embedder
         (mockEmbedder.embed as any).mockResolvedValue(embedding);
-        // Default mock for withUserContext (returns a client with query)
+        // Default mock for withUserContext
         (mockDbClient.withUserContext as any).mockImplementation((_, fn) => {
             const mockClient = {
-                query: vi.fn().mockResolvedValue({ rows: [{ id: 'memory-id' }] }),
+                query: vi.fn().mockImplementation((query, params) => {
+                    // Duplicate check
+                    if (query.includes('SELECT id FROM memories')) {
+                        return Promise.resolve({ rows: [] }); // no duplicate
+                    }
+                    // Lock user row
+                    if (query.includes('SELECT 1 FROM users')) {
+                        return Promise.resolve({ rows: [{ '?column?': 1 }] });
+                    }
+                    // Count memories
+                    if (query.includes('COUNT(*)')) {
+                        return Promise.resolve({ rows: [{ count: '0' }] });
+                    }
+                    // Insert memory
+                    if (query.includes('INSERT INTO memories')) {
+                        return Promise.resolve({ rows: [{ id: 'memory-id' }] });
+                    }
+                    // Usage event
+                    if (query.includes('INSERT INTO usage_events')) {
+                        return Promise.resolve({ rows: [] });
+                    }
+                    // Fallback
+                    return Promise.resolve({ rows: [] });
+                }),
             };
             return fn(mockClient);
         });
@@ -47,8 +70,8 @@ describe('RememberTool', () => {
             expect(result).toBe('memory-id');
             expect(mockAuthService.authenticate).toHaveBeenCalledWith(apiKey);
             expect(mockEmbedder.embed).toHaveBeenCalledWith('test content');
-            // Should have called withUserContext for count and insertion
-            expect(mockDbClient.withUserContext).toHaveBeenCalledTimes(2);
+            // Should have called withUserContext once (atomic transaction)
+            expect(mockDbClient.withUserContext).toHaveBeenCalledTimes(1);
         });
 
         it('should enforce free tier limit (100 memories)', async () => {
@@ -59,50 +82,117 @@ describe('RememberTool', () => {
                         if (query.includes('COUNT(*)')) {
                             return Promise.resolve({ rows: [{ count: '100' }] });
                         }
-                        return Promise.resolve({ rows: [{ id: 'memory-id' }] });
+                        // duplicate check returns empty
+                        if (query.includes('SELECT id FROM memories')) {
+                            return Promise.resolve({ rows: [] });
+                        }
+                        if (query.includes('SELECT 1 FROM users')) {
+                            return Promise.resolve({ rows: [{ '?column?': 1 }] });
+                        }
+                        // other queries
+                        return Promise.resolve({ rows: [] });
                     }),
                 };
                 return fn(mockClient);
             });
-            await expect(rememberTool.remember(apiKey, 'test')).rejects.toThrow(
-                /free tier limit exceeded/
-            );
-            // Should have called withUserContext for count only
+            await expect(rememberTool.remember(apiKey, 'test')).rejects.toMatchObject({
+                code: 'limit_exceeded',
+                message: expect.stringContaining('Free tier allows 100 memories'),
+                retryable: false,
+            });
             expect(mockDbClient.withUserContext).toHaveBeenCalledTimes(1);
         });
 
         it('should allow free tier up to 99 memories', async () => {
-            // Mock count query to return 99
             (mockDbClient.withUserContext as any).mockImplementation((_, fn) => {
                 const mockClient = {
                     query: vi.fn().mockImplementation((query) => {
                         if (query.includes('COUNT(*)')) {
                             return Promise.resolve({ rows: [{ count: '99' }] });
                         }
-                        return Promise.resolve({ rows: [{ id: 'memory-id' }] });
+                        if (query.includes('SELECT id FROM memories')) {
+                            return Promise.resolve({ rows: [] });
+                        }
+                        if (query.includes('SELECT 1 FROM users')) {
+                            return Promise.resolve({ rows: [{ '?column?': 1 }] });
+                        }
+                        if (query.includes('INSERT INTO memories')) {
+                            return Promise.resolve({ rows: [{ id: 'memory-id' }] });
+                        }
+                        if (query.includes('INSERT INTO usage_events')) {
+                            return Promise.resolve({ rows: [] });
+                        }
+                        return Promise.resolve({ rows: [] });
                     }),
                 };
                 return fn(mockClient);
             });
             await expect(rememberTool.remember(apiKey, 'test')).resolves.toBe('memory-id');
-            // Should have called withUserContext for count and insertion
-            expect(mockDbClient.withUserContext).toHaveBeenCalledTimes(2);
+            expect(mockDbClient.withUserContext).toHaveBeenCalledTimes(1);
         });
 
         it('should not enforce limit for paid tiers', async () => {
             (mockAuthService.authenticate as any).mockResolvedValue({ userId, tier: 'starter' });
-            // Mock count query (should not be called, but we'll still mock)
+            // Paid tier should skip count check (no SELECT COUNT(*))
+            let countQueryCalled = false;
             (mockDbClient.withUserContext as any).mockImplementation((_, fn) => {
                 const mockClient = {
-                    query: vi.fn().mockResolvedValue({ rows: [{ id: 'memory-id' }] }),
+                    query: vi.fn().mockImplementation((query) => {
+                        if (query.includes('COUNT(*)')) {
+                            countQueryCalled = true;
+                        }
+                        if (query.includes('SELECT id FROM memories')) {
+                            return Promise.resolve({ rows: [] });
+                        }
+                        if (query.includes('SELECT 1 FROM users')) {
+                            return Promise.resolve({ rows: [{ '?column?': 1 }] });
+                        }
+                        if (query.includes('INSERT INTO memories')) {
+                            return Promise.resolve({ rows: [{ id: 'memory-id' }] });
+                        }
+                        if (query.includes('INSERT INTO usage_events')) {
+                            return Promise.resolve({ rows: [] });
+                        }
+                        return Promise.resolve({ rows: [] });
+                    }),
                 };
                 return fn(mockClient);
             });
             await expect(rememberTool.remember(apiKey, 'test')).resolves.toBe('memory-id');
-            // Should have called withUserContext only for insertion (no count check)
-            // Actually, count check still runs for free tier only; we need to adjust logic.
-            // For simplicity, we'll skip count check for non-free tiers.
-            // We'll implement later.
+            expect(countQueryCalled).toBe(false);
+        });
+
+        it('should deduplicate identical content', async () => {
+            // Track queries executed
+            const queries: string[] = [];
+            (mockDbClient.withUserContext as any).mockImplementation((_, fn) => {
+                const mockClient = {
+                    query: vi.fn().mockImplementation((query) => {
+                        queries.push(query);
+                        // Duplicate check returns a row
+                        if (query.includes('SELECT id FROM memories') && !query.includes('COUNT')) {
+                            return Promise.resolve({ rows: [{ id: 'dedupe-id' }] });
+                        }
+                        // Usage event for dedupe
+                        if (query.includes('INSERT INTO usage_events')) {
+                            expect(query).toContain('remember_dedupe');
+                            return Promise.resolve({ rows: [] });
+                        }
+                        // No other queries should be called
+                        return Promise.resolve({ rows: [] });
+                    }),
+                };
+                return fn(mockClient);
+            });
+            const result = await rememberTool.remember(apiKey, 'same content');
+            expect(result).toBe('dedupe-id');
+            // Verify duplicate check query was called
+            expect(queries).toEqual([
+                expect.stringContaining('SELECT id FROM memories'),
+                expect.stringContaining('INSERT INTO usage_events'),
+            ]);
+            // Embedder should NOT be called
+            expect(mockEmbedder.embed).not.toHaveBeenCalled();
         });
     });
 });

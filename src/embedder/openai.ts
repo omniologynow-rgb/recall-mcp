@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
-import { Embedding, Embedder, EmbeddingError } from './index.js';
+import type { Embedding, Embedder } from './index.js';
+import { EmbeddingError } from './index.js';
 
 export interface OpenAIEmbedderOptions {
     apiKey: string;
