@@ -66,16 +66,16 @@ $$ LANGUAGE sql STABLE;
 
 -- Now create policies that use this function.
 -- For users table: allow select only if id matches current app user.
-CREATE POLICY "Users can only view own user row" ON users FOR ALL USING (id = current_app_user_id());
+CREATE POLICY "Users can only view own user row" ON users FOR ALL USING (id = current_app_user_id()) WITH CHECK (id = current_app_user_id());
 
 -- For api_keys: allow select/update only if user_id matches.
-CREATE POLICY "Users can only manage own API keys" ON api_keys FOR ALL USING (user_id = current_app_user_id());
+CREATE POLICY "Users can only manage own API keys" ON api_keys FOR ALL USING (user_id = current_app_user_id()) WITH CHECK (user_id = current_app_user_id());
 
 -- For memories: allow select/insert/update/delete only if user_id matches.
-CREATE POLICY "Users can only manage own memories" ON memories FOR ALL USING (user_id = current_app_user_id());
+CREATE POLICY "Users can only manage own memories" ON memories FOR ALL USING (user_id = current_app_user_id()) WITH CHECK (user_id = current_app_user_id());
 
 -- For usage_events: allow select/insert only if user_id matches.
-CREATE POLICY "Users can only see own usage events" ON usage_events FOR ALL USING (user_id = current_app_user_id());
+CREATE POLICY "Users can only see own usage events" ON usage_events FOR ALL USING (user_id = current_app_user_id()) WITH CHECK (user_id = current_app_user_id());
 
 -- Ensure the setting can be set by the app role.
 -- The application must connect as a role that does NOT have BYPASSRLS and must set app.current_user_id before any user-scoped query.
