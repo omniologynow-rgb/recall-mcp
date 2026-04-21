@@ -14,6 +14,19 @@ export class RememberTool {
     async remember(apiKey: string, content: string): Promise<string> {
         // Authenticate API key
         const { userId, tier } = await this.auth.authenticate(apiKey);
+        // Tier enforcement
+        if (tier === 'free') {
+            const count = await this.db.withUserContext(userId, async (client) => {
+                const res = await client.query<{ count: string }>(
+                    `SELECT COUNT(*) FROM memories WHERE user_id = $1`,
+                    [userId]
+                );
+                return parseInt(res.rows[0].count, 10);
+            });
+            if (count >= 100) {
+                throw new Error('free tier limit exceeded: maximum 100 memories');
+            }
+        }
         // Generate embedding
         const embedding = await this.embedder.embed(content);
         // Compute content hash (SHA-256)
