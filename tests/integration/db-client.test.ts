@@ -183,4 +183,34 @@ describe('DatabaseClient with RLS', () => {
         // The query should still fail because app.current_user_id is not set.
         await expect(dbClient.query('SELECT * FROM memories')).rejects.toThrow();
     });
+
+    // Adversarial test: ensure WITH CHECK prevents reassignment of user_id
+    it('should prevent user A from reassigning memory to user B via UPDATE', async () => {
+        // First, user A inserts a memory
+        const memoryId = await dbClient.insertMemory({
+            user_id: userAId,
+            namespace: 'adversarial',
+            content: 'User A memory',
+            embedding: Array.from({ length: 1536 }, () => 0.3),
+            content_hash: 'hash3',
+        });
+        // User A attempts to UPDATE the memory's user_id to user B's ID
+        // This should be blocked by WITH CHECK clause of the RLS policy
+        const updated = await dbClient.withUserContext(userAId, async (client) => {
+            const res = await client.query(
+                'UPDATE memories SET user_id = $1 WHERE id = $2 RETURNING id',
+                [userBId, memoryId]
+            );
+            return res.rowCount;
+        });
+        // Expect zero rows updated
+        expect(updated).toBe(0);
+        // Verify the memory still belongs to user A
+        const memories = await dbClient.withUserContext(userAId, async (client) => {
+            const res = await client.query('SELECT user_id FROM memories WHERE id = $1', [memoryId]);
+            return res.rows;
+        });
+        expect(memories).toHaveLength(1);
+        expect(memories[0].user_id).toBe(userAId);
+    });
 });
