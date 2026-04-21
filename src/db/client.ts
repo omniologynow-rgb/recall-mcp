@@ -1,5 +1,6 @@
 import { Pool, PoolClient, QueryResult } from 'pg';
 import pgvector from 'pgvector/pg';
+import { toSql } from 'pgvector';
 import { Embedding } from '../embedder/index.js';
 
 export interface MemoryRow {
@@ -97,7 +98,7 @@ export class DatabaseClient {
                     memory.namespace,
                     memory.content,
                     memory.metadata ?? {},
-                    memory.embedding,
+                    toSql(memory.embedding),
                     memory.content_hash,
                 ]
             );
@@ -135,7 +136,7 @@ export class DatabaseClient {
                    AND 1 - (embedding <=> $1) >= $4
                  ORDER BY embedding <=> $1 ASC
                  LIMIT $5`,
-                [embedding, userId, namespace ?? null, minSimilarity, limit]
+                [toSql(embedding), userId, namespace ?? null, minSimilarity, limit]
             );
         });
         return result.rows;
