@@ -90,7 +90,15 @@ describe('Tier limit stress test', () => {
         expect(failed.length).toBe(100);
         // All failures should be tier limit errors
         failed.forEach(result => {
-            expect((result as PromiseRejectedResult).reason.message).toMatch(/free tier limit exceeded/);
+            const err = (result as PromiseRejectedResult).reason;
+            expect(err).toBeInstanceOf(Error);
+            if ('code' in err) {
+                expect(err.code).toBe('limit_exceeded');
+                expect(err.message).toContain('Free tier allows 100 memories');
+            } else {
+                // Fallback for non-ToolError (should not happen)
+                expect(err.message).toMatch(/free tier limit exceeded/);
+            }
         });
         // Verify database count
         const countRes = await adminClient.withUserContext(userId, async (client) => {
