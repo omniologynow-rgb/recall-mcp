@@ -39,7 +39,7 @@ CREATE TABLE memories (
 CREATE TABLE usage_events (
     id BIGSERIAL PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    event_type TEXT NOT NULL CHECK (event_type IN ('remember','recall','list','update','forget')),
+    event_type TEXT NOT NULL CHECK (event_type IN ('remember','recall','list','update','forget','remember_dedupe')),
     metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
     created_at TIMESTAMPTZ DEFAULT now()
 );
