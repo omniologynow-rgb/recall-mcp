@@ -49,6 +49,14 @@ describe('DatabaseClient with RLS', () => {
         await applyMigrations(adminClient);
         await adminClient.registerVectorTypes();
 
+        // Diagnostic: check RLS and FORCE RLS status
+        const rlsStatus = await adminClient.query(
+            `SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('users', 'api_keys', 'memories', 'usage_events')`
+        );
+        console.log('RLS status:', rlsStatus.rows);
+        const roleStatus = await adminClient.query(`SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname = 'test'`);
+        console.log('Role bypass RLS:', roleStatus.rows);
+
         // Create a non‑superuser, non‑owner application role for RLS enforcement tests
         await adminClient.query(`
             DROP ROLE IF EXISTS recall_app_test;
@@ -57,6 +65,9 @@ describe('DatabaseClient with RLS', () => {
             GRANT SELECT, INSERT, UPDATE, DELETE ON users, api_keys, memories, usage_events TO recall_app_test;
             GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO recall_app_test;
         `);
+
+        // Ensure the test role cannot bypass RLS (otherwise FORCE RLS canary will fail)
+        await adminClient.query('ALTER ROLE test NOBYPASSRLS');
 
         // Temporarily disable RLS to insert test users (since no app.current_user_id set)
         await adminClient.query('ALTER TABLE users DISABLE ROW LEVEL SECURITY');
