@@ -19,6 +19,12 @@ const mockDbClient = {
 
 describe('AuthService', () => {
   let authService: AuthService;
+  const validKey = 'recall_live_abcdefghijklmnopqrstuvwxyz012345';
+  const keyPrefix = 'recall_live_abcd';
+  const userId = '123e4567-e89b-12d3-a456-426614174000';
+  const tier = 'free';
+  const keyHash = '$2b$12$hashedvalue';
+  const now = new Date();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,12 +59,6 @@ describe('AuthService', () => {
   });
 
   describe('authenticate', () => {
-    const validKey = 'recall_live_abcdefghijklmnopqrstuvwxyz012345';
-    const keyPrefix = 'recall_live_abcd';
-    const userId = '123e4567-e89b-12d3-a456-426614174000';
-    const tier = 'free';
-    const keyHash = '$2b$12$hashedvalue';
-    const now = new Date();
 
     beforeEach(() => {
       // Default mock for key lookup
@@ -77,14 +77,18 @@ describe('AuthService', () => {
     });
 
     it('returns user id and tier for valid key', async () => {
-      // Mock user lookup
+      // Mock sequence: first call (key lookup) returns key row, second call (user lookup) returns user row
       (mockDbClient.query as any)
+        .mockResolvedValueOnce({ rows: [{ id: 'key-id', user_id: userId, key_hash: keyHash, key_prefix: keyPrefix, revoked_at: null }] }) // key lookup
         .mockResolvedValueOnce({ rows: [{ id: userId, tier }] }); // user lookup
       const result = await authService.authenticate(validKey);
-      expect(result).toEqual({ userId, tier });
+      expect(result).toMatchObject({ userId, tier });
+      expect(result.keyId).toBe('key-id');
       // Should call bcrypt.compare with correct arguments
       expect(bcrypt.compare).toHaveBeenCalledWith(validKey, keyHash);
-      // Should have updated last_used_at (fire-and-forget)
+      // Should have called: 1) key lookup, 2) user lookup, 3) update last_used_at
+      expect(mockDbClient.query).toHaveBeenCalledTimes(3);
+      // Verify update query was called
       expect(mockDbClient.query).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE api_keys'),
         expect.any(Array)
@@ -92,17 +96,24 @@ describe('AuthService', () => {
     });
 
     it('caches successful authentication', async () => {
+      // Mock sequence for first call
       (mockDbClient.query as any)
-        .mockResolvedValueOnce({ rows: [{ id: userId, tier }] });
+        .mockResolvedValueOnce({ rows: [{ id: 'key-id', user_id: userId, key_hash: keyHash, key_prefix: keyPrefix, revoked_at: null }] }) // key lookup
+        .mockResolvedValueOnce({ rows: [{ id: userId, tier }] }); // user lookup
       // First call
       await authService.authenticate(validKey);
-      expect(mockDbClient.query).toHaveBeenCalledTimes(2); // user lookup + key update
+      expect(mockDbClient.query).toHaveBeenCalledTimes(3); // key lookup + user lookup + key update
       (mockDbClient.query as any).mockClear();
-      // Second call within cache window should not call bcrypt.compare nor db lookup
+      // Second call within cache window: only revocation check query
+      (mockDbClient.query as any).mockResolvedValue({ rows: [{ revoked_at: null }] });
       (bcrypt.compare as any).mockClear();
       await authService.authenticate(validKey);
       expect(bcrypt.compare).not.toHaveBeenCalled();
-      expect(mockDbClient.query).not.toHaveBeenCalled();
+      expect(mockDbClient.query).toHaveBeenCalledTimes(1); // revocation check
+      expect(mockDbClient.query).toHaveBeenCalledWith(
+        `SELECT revoked_at FROM api_keys WHERE id = $1`,
+        ['key-id']
+      );
     });
 
     it('throws generic error for invalid key format', async () => {
@@ -140,19 +151,23 @@ describe('AuthService', () => {
     it('invalidates cache entry on authentication failure', async () => {
       // First, cache a successful authentication
       (mockDbClient.query as any)
-        .mockResolvedValueOnce({ rows: [{ id: userId, tier }] });
+        .mockResolvedValueOnce({ rows: [{ id: 'key-id', user_id: userId, key_hash: keyHash, key_prefix: keyPrefix, revoked_at: null }] }) // key lookup
+        .mockResolvedValueOnce({ rows: [{ id: userId, tier }] }); // user lookup
       await authService.authenticate(validKey);
-      // Now simulate a revoked key on next call (cache miss)
+      // Clear bcrypt mock to isolate second call
+      (bcrypt.compare as any).mockClear();
+      // Now simulate a revoked key on next call: revocation check returns revoked
       (mockDbClient.query as any).mockReset();
-      (mockDbClient.query as any).mockResolvedValue({
-        rows: [{
+      // Revocation check query
+      (mockDbClient.query as any)
+        .mockResolvedValueOnce({ rows: [{ revoked_at: new Date() }] }) // revoked
+        .mockResolvedValueOnce({ rows: [{
           id: 'key-id',
           user_id: userId,
           key_hash: keyHash,
           key_prefix: keyPrefix,
           revoked_at: new Date(),
-        }],
-      });
+        }] }); // key lookup after cache deletion
       await expect(authService.authenticate(validKey)).rejects.toThrow(/unauthorized/);
       // Ensure the cache entry was removed
       // (We'll need to expose cache for testing, but we can infer via bcrypt calls)
