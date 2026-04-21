@@ -61,7 +61,7 @@ ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY;
 -- RLS policies
 -- We use a custom function current_app_user_id() that reads the session variable 'app.current_user_id'.
 CREATE OR REPLACE FUNCTION current_app_user_id() RETURNS UUID AS $$
-    SELECT current_setting('app.current_user_id', true)::UUID;
+    SELECT current_setting('app.current_user_id', false)::UUID;
 $$ LANGUAGE sql STABLE;
 
 -- Now create policies that use this function.
