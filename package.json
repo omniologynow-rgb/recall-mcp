@@ -27,7 +27,7 @@
   "author": "",
   "license": "ISC",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.0.0 <21.0.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
