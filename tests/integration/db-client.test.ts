@@ -96,6 +96,33 @@ describe('DatabaseClient with RLS', () => {
         }
     });
 
+    // Helper to seed an API key for a user (using application role)
+    async function seedApiKeyFor(userId: string, label = 'test key'): Promise<string> {
+        const prefix = `test_${Math.random().toString(36).substring(2)}`;
+        const result = await dbClient.withUserContext(userId, async (client) => {
+            const res = await client.query<{ id: string }>(
+                `INSERT INTO api_keys (user_id, key_prefix, key_hash, label)
+                 VALUES ($1, $2, $3, $4) RETURNING id`,
+                [userId, prefix, 'test_hash', label]
+            );
+            return res.rows[0].id;
+        });
+        return result;
+    }
+
+    // Helper to seed a usage event for a user
+    async function seedUsageEventFor(userId: string, eventType = 'remember'): Promise<string> {
+        const result = await dbClient.withUserContext(userId, async (client) => {
+            const res = await client.query<{ id: string }>(
+                `INSERT INTO usage_events (user_id, event_type, metadata)
+                 VALUES ($1, $2, '{}') RETURNING id`,
+                [userId, eventType]
+            );
+            return res.rows[0].id;
+        });
+        return result;
+    }
+
     it('should insert memory for user A', async () => {
         const memoryId = await dbClient.insertMemory({
             user_id: userAId,
@@ -183,6 +210,126 @@ describe('DatabaseClient with RLS', () => {
         // We'll connect as the same user (test) which is the table owner (since we created tables as 'test').
         // The query should still fail because app.current_user_id is not set.
         await expect(dbClient.query('SELECT * FROM memories')).rejects.toThrow();
+    });
+
+    it('FORCE RLS canary: table owner cannot bypass policy on memories', async () => {
+        // Seed a memory for userB using the application role (non-owner)
+        const memoryId = await dbClient.insertMemory({
+            user_id: userBId,
+            namespace: 'private',
+            content: 'User B secret',
+            embedding: Array.from({ length: 1536 }, () => 0.2),
+            content_hash: 'hashB',
+        });
+
+        // Connect as the table OWNER, act as userA via withUserContext
+        await adminClient.withUserContext(userAId, async (client) => {
+            // 1) SELECT: owner must not see userB's rows
+            const selectRes = await client.query(
+                `SELECT * FROM memories WHERE user_id = $1`,
+                [userBId]
+            );
+            expect(selectRes.rows).toHaveLength(0);
+
+            // 2) UPDATE: owner must not be able to modify userB's rows
+            const updateRes = await client.query(
+                `UPDATE memories SET content = 'hijacked' WHERE user_id = $1`,
+                [userBId]
+            );
+            expect(updateRes.rowCount).toBe(0);
+
+            // 3) INSERT with a foreign user_id must fail WITH CHECK
+            await expect(
+                client.query(
+                    `INSERT INTO memories (user_id, namespace, content, embedding, content_hash)
+                     VALUES ($1, 'test', 'x', $2, 'h')`,
+                    [userBId, Array.from({ length: 1536 }, () => 0.1)]
+                )
+            ).rejects.toThrow();
+
+            // 4) DELETE: owner must not be able to delete userB's rows
+            const deleteRes = await client.query(
+                `DELETE FROM memories WHERE user_id = $1`,
+                [userBId]
+            );
+            expect(deleteRes.rowCount).toBe(0);
+        });
+    });
+
+    it('FORCE RLS canary: table owner cannot bypass policy on api_keys', async () => {
+        // Seed an API key for userB using the application role
+        const keyId = await seedApiKeyFor(userBId, 'user B key');
+
+        // Connect as the table OWNER, act as userA via withUserContext
+        await adminClient.withUserContext(userAId, async (client) => {
+            // 1) SELECT: owner must not see userB's rows
+            const selectRes = await client.query(
+                `SELECT * FROM api_keys WHERE user_id = $1`,
+                [userBId]
+            );
+            expect(selectRes.rows).toHaveLength(0);
+
+            // 2) UPDATE: owner must not be able to modify userB's rows
+            const updateRes = await client.query(
+                `UPDATE api_keys SET label = 'hijacked' WHERE user_id = $1`,
+                [userBId]
+            );
+            expect(updateRes.rowCount).toBe(0);
+
+            // 3) INSERT with a foreign user_id must fail WITH CHECK
+            await expect(
+                client.query(
+                    `INSERT INTO api_keys (user_id, key_prefix, key_hash, label)
+                     VALUES ($1, $2, $3, $4)`,
+                    [userBId, 'prefix_x', 'hash_x', 'x']
+                )
+            ).rejects.toThrow();
+
+            // 4) DELETE: owner must not be able to delete userB's rows
+            const deleteRes = await client.query(
+                `DELETE FROM api_keys WHERE user_id = $1`,
+                [userBId]
+            );
+            expect(deleteRes.rowCount).toBe(0);
+        });
+    });
+
+    it('FORCE RLS canary: table owner cannot bypass policy on usage_events', async () => {
+        // Seed a usage event for userB using the application role
+        const eventId = await seedUsageEventFor(userBId, 'remember');
+
+        // Connect as the table OWNER, act as userA via withUserContext
+        await adminClient.withUserContext(userAId, async (client) => {
+            // 1) SELECT: owner must not see userB's rows
+            const selectRes = await client.query(
+                `SELECT * FROM usage_events WHERE user_id = $1`,
+                [userBId]
+            );
+            expect(selectRes.rows).toHaveLength(0);
+
+            // 2) UPDATE: owner must not be able to modify userB's rows
+            const updateRes = await client.query(
+                `UPDATE usage_events SET event_type = 'hijacked' WHERE user_id = $1`,
+                [userBId]
+            );
+            expect(updateRes.rowCount).toBe(0);
+
+            // 3) INSERT with a foreign user_id must fail WITH CHECK
+            await expect(
+                client.query(
+                    `INSERT INTO usage_events (user_id, event_type, metadata)
+                     VALUES ($1, $2, '{}')`,
+                    [userBId, 'x']
+                )
+            ).rejects.toThrow();
+
+            // 4) DELETE: owner must not be able to delete userB's rows
+            const deleteRes = await client.query(
+                `DELETE FROM usage_events WHERE user_id = $1`,
+                [userBId]
+            );
+            expect(deleteRes.rowCount).toBe(0);
+        });
     });
 
     // Adversarial test: ensure WITH CHECK prevents reassignment of user_id
