@@ -59,20 +59,7 @@ ALTER TABLE memories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies
--- Users: users can see only their own row (based on JWT? We'll use application-level auth; still add policy)
-CREATE POLICY "Users can only view own row" ON users FOR ALL USING (id = current_user_id());
--- For simplicity, we'll rely on application-level auth; but we need a function to get current user ID from request context.
--- Since we're using API keys, we cannot use Supabase's auth. We'll set `security definer` functions or use app-level WHERE clauses.
--- We'll still create policies that assume a `current_user_id` function returning UUID.
--- Let's create a helper function that returns the user_id from the JWT claim (if using Supabase Auth). But we're not.
--- Instead, we'll create a policy that always returns false, forcing all queries to go through app-level WHERE clauses.
--- This is a safety net: if app forgets WHERE user_id = ?, RLS will block all rows.
--- We'll set policy to `USING (false)` and `WITH CHECK (false)` for all operations, then allow the service role (bypass RLS).
--- We'll rely on service role for all queries. However spec says RLS must be enabled with policies that scope to user_id.
--- Let's implement a policy that uses a custom claim 'user_id' set by our app via `SET LOCAL`.
--- We'll create a function `current_app_user_id()` that returns UUID from `app.current_user_id` setting.
--- We'll set this in a transaction before each query.
-
+-- We use a custom function current_app_user_id() that reads the session variable 'app.current_user_id'.
 CREATE OR REPLACE FUNCTION current_app_user_id() RETURNS UUID AS $$
     SELECT current_setting('app.current_user_id', true)::UUID;
 $$ LANGUAGE sql STABLE;
@@ -91,10 +78,7 @@ CREATE POLICY "Users can only manage own memories" ON memories FOR ALL USING (us
 CREATE POLICY "Users can only see own usage events" ON usage_events FOR ALL USING (user_id = current_app_user_id());
 
 -- Ensure the setting can be set by the app role.
--- We'll also need to grant permissions to the service role (postgres) to bypass RLS? Actually service role will still be subject to RLS.
--- We'll create a role `service_role` (already exists in Supabase) and allow it to bypass RLS via `BYPASSRLS` attribute.
--- In Supabase, the `service_role` already has BYPASSRLS. We'll use that for migrations and admin queries.
--- Our application will connect as `service_role` and set `app.current_user_id` before each user-scoped query.
+-- The application must connect as a role that does NOT have BYPASSRLS and must set app.current_user_id before any user-scoped query.
 
 -- Create a trigger to update updated_at on memories
 CREATE OR REPLACE FUNCTION update_updated_at_column() RETURNS TRIGGER AS $$
