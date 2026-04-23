@@ -31,8 +31,11 @@ describe('DatabaseClient with RLS', () => {
     let container: any;
     let adminClient: DatabaseClient;
     let dbClient: DatabaseClient;
+    let ownerClient: DatabaseClient;
     let userAId: string;
     let userBId: string;
+    let ownerRole: string;
+    let testRole: string;
 
     beforeAll(async () => {
         // Start PostgreSQL container with pgvector
@@ -54,20 +57,42 @@ describe('DatabaseClient with RLS', () => {
             `SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('users', 'api_keys', 'memories', 'usage_events')`
         );
         console.log('RLS status:', rlsStatus.rows);
-        const roleStatus = await adminClient.query(`SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname = 'test'`);
-        console.log('Role bypass RLS:', roleStatus.rows);
+        const roleStatus = await adminClient.query(`SELECT rolname, rolbypassrls, rolsuper FROM pg_roles WHERE rolname = 'test'`);
+        console.log('Role bypass RLS and superuser:', roleStatus.rows);
+        if (roleStatus.rows[0].rolsuper) {
+            console.warn('WARNING: test role is a superuser; RLS bypass is automatic regardless of BYPASSRLS');
+        }
 
-        // Create a non‑superuser, non‑owner application role for RLS enforcement tests
+        // Create the table owner role (non‑superuser, NOBYPASSRLS, LOGIN)
+        // Use a unique suffix to avoid conflicts if tests are run multiple times
+        const suffix = Math.random().toString(36).substring(2, 8);
+        ownerRole = `recall_app_owner_${suffix}`;
+        testRole = `recall_app_test_${suffix}`;
+        
+        // Drop if they exist (should be safe with unique names)
+        try { await adminClient.query(`DROP ROLE IF EXISTS ${ownerRole}`); } catch {}
+        try { await adminClient.query(`DROP ROLE IF EXISTS ${testRole}`); } catch {}
+        
+        // Create owner role (will own tables)
         await adminClient.query(`
-            DROP ROLE IF EXISTS recall_app_test;
-            CREATE ROLE recall_app_test LOGIN PASSWORD 'test' NOBYPASSRLS;
-            GRANT USAGE ON SCHEMA public TO recall_app_test;
-            GRANT SELECT, INSERT, UPDATE, DELETE ON users, api_keys, memories, usage_events TO recall_app_test;
-            GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO recall_app_test;
+            CREATE ROLE ${ownerRole} LOGIN PASSWORD 'test' NOBYPASSRLS;
+            GRANT USAGE ON SCHEMA public TO ${ownerRole};
+            GRANT SELECT, INSERT, UPDATE, DELETE ON users, api_keys, memories, usage_events TO ${ownerRole};
+            GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO ${ownerRole};
         `);
-
+        // Create test role (non‑owner, inherits same privileges)
+        await adminClient.query(`
+            CREATE ROLE ${testRole} LOGIN PASSWORD 'test' NOBYPASSRLS INHERIT IN ROLE ${ownerRole};
+        `);
+        
         // Ensure the test role cannot bypass RLS (otherwise FORCE RLS canary will fail)
         await adminClient.query('ALTER ROLE test NOBYPASSRLS');
+
+        // Transfer table ownership to the owner role (non‑superuser, NOBYPASSRLS)
+        await adminClient.query(`ALTER TABLE users OWNER TO ${ownerRole}`);
+        await adminClient.query(`ALTER TABLE api_keys OWNER TO ${ownerRole}`);
+        await adminClient.query(`ALTER TABLE memories OWNER TO ${ownerRole}`);
+        await adminClient.query(`ALTER TABLE usage_events OWNER TO ${ownerRole}`);
 
         // Temporarily disable RLS to insert test users (since no app.current_user_id set)
         await adminClient.query('ALTER TABLE users DISABLE ROW LEVEL SECURITY');
@@ -89,15 +114,23 @@ describe('DatabaseClient with RLS', () => {
         await adminClient.query('ALTER TABLE memories ENABLE ROW LEVEL SECURITY');
         await adminClient.query('ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY');
 
-        // Create the application client that will be used for all RLS tests
-        const appConnectionString = `postgresql://recall_app_test:test@${container.getHost()}:${container.getPort()}/testdb`;
+        // Create the application client that will be used for all RLS tests (non‑owner)
+        const appConnectionString = `postgresql://${testRole}:test@${container.getHost()}:${container.getPort()}/testdb`;
         dbClient = new DatabaseClient(appConnectionString);
         await dbClient.registerVectorTypes();
+
+        // Create a client that connects as the table owner
+        const ownerConnectionString = `postgresql://${ownerRole}:test@${container.getHost()}:${container.getPort()}/testdb`;
+        ownerClient = new DatabaseClient(ownerConnectionString);
+        await ownerClient.registerVectorTypes();
     }, 30000); // 30 second timeout
 
     afterAll(async () => {
         if (dbClient) {
             await dbClient.close();
+        }
+        if (ownerClient) {
+            await ownerClient.close();
         }
         if (adminClient) {
             await adminClient.close();
@@ -223,7 +256,7 @@ describe('DatabaseClient with RLS', () => {
         await expect(dbClient.query('SELECT * FROM memories')).rejects.toThrow();
     });
 
-    it.skip('FORCE RLS canary: table owner cannot bypass policy on memories', async () => {
+    it('FORCE RLS canary: table owner cannot bypass policy on memories', async () => {
         // Seed a memory for userB using the application role (non-owner)
         const memoryId = await dbClient.insertMemory({
             user_id: userBId,
@@ -234,7 +267,7 @@ describe('DatabaseClient with RLS', () => {
         });
 
         // Connect as the table OWNER, act as userA via withUserContext
-        await adminClient.withUserContext(userAId, async (client) => {
+        await ownerClient.withUserContext(userAId, async (client) => {
             // 1) SELECT: owner must not see userB's rows
             const selectRes = await client.query(
                 `SELECT * FROM memories WHERE user_id = $1`,
@@ -249,7 +282,7 @@ describe('DatabaseClient with RLS', () => {
             );
             expect(updateRes.rowCount).toBe(0);
 
-            // 3) INSERT with a foreign user_id must fail WITH CHECK
+            // 3) INSERT with a foreign user_id must fail WITH CHECK (aborts transaction)
             await expect(
                 client.query(
                     `INSERT INTO memories (user_id, namespace, content, embedding, content_hash)
@@ -258,21 +291,19 @@ describe('DatabaseClient with RLS', () => {
                 )
             ).rejects.toThrow();
 
-            // 4) DELETE: owner must not be able to delete userB's rows
-            const deleteRes = await client.query(
-                `DELETE FROM memories WHERE user_id = $1`,
-                [userBId]
-            );
-            expect(deleteRes.rowCount).toBe(0);
+            // 4) After INSERT fails, transaction is aborted; further queries should fail
+            await expect(
+                client.query(`DELETE FROM memories WHERE user_id = $1`, [userBId])
+            ).rejects.toThrow(/current transaction is aborted/);
         });
     });
 
-    it.skip('FORCE RLS canary: table owner cannot bypass policy on api_keys', async () => {
+    it('FORCE RLS canary: table owner cannot bypass policy on api_keys', async () => {
         // Seed an API key for userB using the application role
         const keyId = await seedApiKeyFor(userBId, 'user B key');
 
         // Connect as the table OWNER, act as userA via withUserContext
-        await adminClient.withUserContext(userAId, async (client) => {
+        await ownerClient.withUserContext(userAId, async (client) => {
             // 1) SELECT: owner must not see userB's rows
             const selectRes = await client.query(
                 `SELECT * FROM api_keys WHERE user_id = $1`,
@@ -287,7 +318,7 @@ describe('DatabaseClient with RLS', () => {
             );
             expect(updateRes.rowCount).toBe(0);
 
-            // 3) INSERT with a foreign user_id must fail WITH CHECK
+            // 3) INSERT with a foreign user_id must fail WITH CHECK (aborts transaction)
             await expect(
                 client.query(
                     `INSERT INTO api_keys (user_id, key_prefix, key_hash, label)
@@ -296,21 +327,19 @@ describe('DatabaseClient with RLS', () => {
                 )
             ).rejects.toThrow();
 
-            // 4) DELETE: owner must not be able to delete userB's rows
-            const deleteRes = await client.query(
-                `DELETE FROM api_keys WHERE user_id = $1`,
-                [userBId]
-            );
-            expect(deleteRes.rowCount).toBe(0);
+            // 4) After INSERT fails, transaction is aborted; further queries should fail
+            await expect(
+                client.query(`DELETE FROM api_keys WHERE user_id = $1`, [userBId])
+            ).rejects.toThrow(/current transaction is aborted/);
         });
     });
 
-    it.skip('FORCE RLS canary: table owner cannot bypass policy on usage_events', async () => {
+    it('FORCE RLS canary: table owner cannot bypass policy on usage_events', async () => {
         // Seed a usage event for userB using the application role
         const eventId = await seedUsageEventFor(userBId, 'remember');
 
         // Connect as the table OWNER, act as userA via withUserContext
-        await adminClient.withUserContext(userAId, async (client) => {
+        await ownerClient.withUserContext(userAId, async (client) => {
             // 1) SELECT: owner must not see userB's rows
             const selectRes = await client.query(
                 `SELECT * FROM usage_events WHERE user_id = $1`,
@@ -325,7 +354,7 @@ describe('DatabaseClient with RLS', () => {
             );
             expect(updateRes.rowCount).toBe(0);
 
-            // 3) INSERT with a foreign user_id must fail WITH CHECK
+            // 3) INSERT with a foreign user_id must fail WITH CHECK (aborts transaction)
             await expect(
                 client.query(
                     `INSERT INTO usage_events (user_id, event_type, metadata)
@@ -334,12 +363,10 @@ describe('DatabaseClient with RLS', () => {
                 )
             ).rejects.toThrow();
 
-            // 4) DELETE: owner must not be able to delete userB's rows
-            const deleteRes = await client.query(
-                `DELETE FROM usage_events WHERE user_id = $1`,
-                [userBId]
-            );
-            expect(deleteRes.rowCount).toBe(0);
+            // 4) After INSERT fails, transaction is aborted; further queries should fail
+            await expect(
+                client.query(`DELETE FROM usage_events WHERE user_id = $1`, [userBId])
+            ).rejects.toThrow(/current transaction is aborted/);
         });
     });
 

@@ -52,6 +52,6 @@ export function getConfig() {
         databaseUrl: env.DATABASE_URL,
         openaiApiKey: env.OPENAI_API_KEY,
         logLevel: env.LOG_LEVEL,
-        isDev: env.NODE_ENV === 'development',
+        isDev: env.NODE_ENV === 'development' || env.NODE_ENV === 'test',
     };
 }

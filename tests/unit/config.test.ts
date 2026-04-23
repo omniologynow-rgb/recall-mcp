@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { loadEnv, resetEnvCache } from '../../src/config.js';
+import { loadEnv, resetEnvCache, getConfig } from '../../src/config.js';
 
 describe('config', () => {
     const originalEnv = process.env;
@@ -51,5 +51,23 @@ describe('config', () => {
         const env = loadEnv();
         expect(env.PORT).toBe(3000);
         expect(env.RATE_LIMIT_PER_KEY).toBe(50);
+    });
+
+    it('should treat NODE_ENV=test as development for isDev', () => {
+        process.env.DATABASE_URL = 'postgresql://localhost/db';
+        process.env.NODE_ENV = 'test';
+        const env = loadEnv();
+        expect(env.NODE_ENV).toBe('test');
+        const config = getConfig();
+        expect(config.isDev).toBe(true);
+    });
+
+    it('should treat NODE_ENV=production as not dev', () => {
+        process.env.DATABASE_URL = 'postgresql://localhost/db';
+        process.env.NODE_ENV = 'production';
+        const env = loadEnv();
+        expect(env.NODE_ENV).toBe('production');
+        const config = getConfig();
+        expect(config.isDev).toBe(false);
     });
 });
