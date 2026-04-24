@@ -1,7 +1,6 @@
 import { describe, it, beforeAll, afterAll } from 'vitest';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { DatabaseClient } from '../../src/db/client.js';
-import { AuthService } from '../../src/auth/index.js';
 import { MockEmbedder } from '../../src/embedder/mock.js';
 import { RememberTool } from '../../src/tools/remember.js';
 import fs from 'fs/promises';
@@ -33,12 +32,9 @@ async function applyMigrations(client: DatabaseClient) {
 describe('End-to-end trace', () => {
     let container: any;
     let adminClient: DatabaseClient;
-    let authService: AuthService;
     let embedder: MockEmbedder;
     let rememberTool: RememberTool;
     let userId: string;
-    let apiKey: string;
-    let keyPrefix: string;
 
     beforeAll(async () => {
         // Start PostgreSQL container with pgvector
@@ -63,17 +59,10 @@ describe('End-to-end trace', () => {
         userId = userRes.rows[0].id;
         console.log(`✅ User created: ${userId}`);
 
-        // Generate an API key for that user. Print the key prefix only.
-        authService = new AuthService(adminClient);
-        const { key, keyPrefix: prefix } = await authService.generateApiKey(userId, 'demo key');
-        apiKey = key;
-        keyPrefix = prefix;
-        console.log(`✅ API key generated. Full key: ${apiKey}`);
-        console.log(`   Key prefix: ${keyPrefix}`);
-
+                        
         // Create embedder and tool
         embedder = new MockEmbedder();
-        rememberTool = new RememberTool(adminClient, embedder, authService);
+        rememberTool = new RememberTool(adminClient, embedder);
     });
 
     afterAll(async () => {
@@ -86,7 +75,7 @@ describe('End-to-end trace', () => {
         const content = 'The launch date is May 15, target is indie devs.';
         const namespace = 'launch_plan';
         console.log(`\n📝 Calling remember with namespace="${namespace}"`);
-        const memoryId = await rememberTool.remember(apiKey, content, namespace);
+        const memoryId = await rememberTool.remember(userId, 'free', content, namespace);
         console.log(`✅ Remember succeeded. Returned id: ${memoryId}`);
         console.log(`   namespace: ${namespace}`);
         console.log(`   deduped: false (first insert)`);
@@ -144,7 +133,7 @@ describe('End-to-end trace', () => {
 
         // Call remember() again with the SAME content+namespace.
         console.log('\n📝 Calling remember again with identical content and namespace...');
-        const secondResult = await rememberTool.remember(apiKey, content, namespace);
+        const secondResult = await rememberTool.remember(userId, 'free', content, namespace);
         console.log(`✅ Second remember returned id: ${secondResult}`);
         console.log(`   deduped: true (expected)`);
 

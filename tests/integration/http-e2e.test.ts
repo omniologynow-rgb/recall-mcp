@@ -106,7 +106,6 @@ describe('HTTP end-to-end tool call', () => {
         const request = makeJsonRpcRequest('tools/call', {
             name: 'remember',
             arguments: {
-                apiKey,
                 content: 'The sky is blue.',
                 namespace: 'test',
             },
@@ -141,7 +140,6 @@ describe('HTTP end-to-end tool call', () => {
         const request = makeJsonRpcRequest('tools/call', {
             name: 'remember',
             arguments: {
-                apiKey: 'invalid-key',
                 content: 'Should fail',
                 namespace: 'test',
             },
@@ -166,7 +164,6 @@ describe('HTTP end-to-end tool call', () => {
         const request = makeJsonRpcRequest('tools/call', {
             name: 'remember',
             arguments: {
-                apiKey: 'anything',
                 content: 'Should fail',
                 namespace: 'test',
             },

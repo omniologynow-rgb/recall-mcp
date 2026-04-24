@@ -1,7 +1,6 @@
 import { describe, it, beforeAll, afterAll, expect } from 'vitest';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { DatabaseClient } from '../../src/db/client.js';
-import { AuthService } from '../../src/auth/index.js';
 import { ListMemoriesTool } from '../../src/tools/list.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -33,10 +32,8 @@ async function applyMigrations(client: DatabaseClient) {
 describe('List memories tool integration', () => {
     let container: any;
     let adminClient: DatabaseClient;
-    let authService: AuthService;
     let listTool: ListMemoriesTool;
     let userId: string;
-    let apiKey: string;
 
     beforeAll(async () => {
         // Start PostgreSQL container with pgvector
@@ -61,12 +58,9 @@ describe('List memories tool integration', () => {
         userId = userRes.rows[0].id;
 
         // Create an API key for the user
-        authService = new AuthService(adminClient);
-        const { key } = await authService.generateApiKey(userId, 'test key');
-        apiKey = key;
 
         // Create tool
-        listTool = new ListMemoriesTool(adminClient, authService);
+        listTool = new ListMemoriesTool(adminClient);
 
         // Seed memories in different namespaces
         await adminClient.withUserContext(userId, async (client) => {
@@ -97,7 +91,7 @@ describe('List memories tool integration', () => {
     });
 
     it('should list memories for default namespace', async () => {
-        const results = await listTool.list(apiKey, 'default');
+        const results = await listTool.list(userId, 'default');
         expect(results).toHaveLength(2);
         results.forEach(r => {
             expect(r.namespace).toBe('default');
@@ -111,7 +105,7 @@ describe('List memories tool integration', () => {
     });
 
     it('should list memories for specific namespace', async () => {
-        const results = await listTool.list(apiKey, 'work');
+        const results = await listTool.list(userId, 'work');
         expect(results).toHaveLength(3);
         results.forEach(r => {
             expect(r.namespace).toBe('work');
@@ -120,9 +114,9 @@ describe('List memories tool integration', () => {
 
     it('should respect limit and offset', async () => {
         // Sorted by created_at ascending? Let's assume order by created_at
-        const results1 = await listTool.list(apiKey, 'work', 2, 0);
+        const results1 = await listTool.list(userId, 'work', 2, 0);
         expect(results1).toHaveLength(2);
-        const results2 = await listTool.list(apiKey, 'work', 2, 2);
+        const results2 = await listTool.list(userId, 'work', 2, 2);
         expect(results2).toHaveLength(1);
         // Ensure no overlap
         const ids1 = results1.map(r => r.id);
@@ -131,7 +125,7 @@ describe('List memories tool integration', () => {
     });
 
     it('should emit usage event', async () => {
-        await listTool.list(apiKey, 'default');
+        await listTool.list(userId, 'default');
         const events = await adminClient.withUserContext(userId, async (client) => {
             return client.query<{ event_type: string }>(
                 `SELECT event_type FROM usage_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,

@@ -36,8 +36,44 @@ Replace the placeholder verification with the exact HMAC algorithm, header name,
 - **Forget by‑query:** The `forget` tool currently only deletes by memory ID; a `forget_by_query` mode with `confirm: true` and `max_delete` bound is planned for R5.
 - **Content normalization:** Deduplication currently uses exact SHA‑256 of raw content; planned normalization (trim + collapse whitespace + NFC) will be added in R4.
 - **Metadata parameter:** The `remember` tool does not yet accept a `metadata` parameter (planned for R4).
-- **Prompt‑injection wrapping:** Recall output does not yet wrap memories in `<memory>` tags to prevent prompt injection (planned for R3).
-- **Error shape:** Tool errors are currently returned as MCP‑compatible `{ code, message, retryable, meta }` but the outer `error` property required by the spec is missing (planned for R3).
+- **Prompt‑injection wrapping:** Recall output wraps memories in `<memory>` tags for prompt-injection defense (completed in R3).
+## Error shape layering (R3 ADR)
+
+RecallMCP uses a layered error strategy:
+
+1. **HTTP layer (Fastify preHandler, pre-transport):**
+   - Auth failures (missing/invalid API key) return `HTTP 401` with
+     `{ error: "Unauthorized" }` or `{ error: "Missing or invalid Authorization header" }`.
+   - These errors fire before the MCP transport ever sees the request.
+   - This layer is thin — only auth checks live here.
+
+2. **JSON‑RPC layer (MCP SDK, inside transport):**
+   - Auth context (`authContext` AsyncLocalStorage) is set in the route handler
+     before calling `transport.handleRequest()`. If missing, the handler returns
+     `{ error: { code: 'unauthorized', message: '...', retryable: false } }`
+     inside the tool result content.
+   - Zod validation failures produce `{ error: { code: 'validation_error',
+     message: '...', retryable: false, meta: { issues: [...] } } }`
+     via `ToolError`'s `toMcpError()`.
+   - Business logic errors (tier limits, not found, duplicates) produce
+     `ToolError` instances that serialize to the same consistent shape.
+   - **All errors are returned inside the `result.content` as JSON text,**
+     never thrown as JavaScript exceptions. Throwing would land in the
+     JSON‑RPC error envelope (error code -32603), which is harder for
+     MCP clients to distinguish from transport-level failures.
+
+3. **When each applies:**
+   - `HTTP 401` → only for pre-transport auth failures (missing/invalid
+     `Authorization` header or Bearer token).
+   - `{ error: { code, message } }` in `result.content` → all tool-level
+     errors: validation, authorization, tier limits, not found, internal
+     errors, unknown tool names.
+
+**⚠️ MCP client expectations:** Some MCP clients expect tool errors to be
+thrown as exceptions (wrapped in the JSON‑RPC error envelope). If integration
+issues arise, this layer can be adjusted to throw `ToolError` instead of
+returning it in content, by replacing `return { content: [serialized] }`
+with `throw toolError` in the handler.
 - **Cross‑user isolation test for recall:** Additional integration test needed (planned for R3).
 - **Sigstore provenance:** GitHub Actions workflow for supply‑chain verification not yet set up (planned for R9).
 - **Dockerfile:** Distroless image with health check not yet created (planned for R8).

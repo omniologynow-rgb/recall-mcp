@@ -1,7 +1,6 @@
 import { describe, it, beforeAll, afterAll, expect } from 'vitest';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { DatabaseClient } from '../../src/db/client.js';
-import { AuthService } from '../../src/auth/index.js';
 import { MockEmbedder } from '../../src/embedder/mock.js';
 import { RememberTool } from '../../src/tools/remember.js';
 import fs from 'fs/promises';
@@ -33,11 +32,9 @@ async function applyMigrations(client: DatabaseClient) {
 describe('Tier limit stress test', () => {
     let container: any;
     let adminClient: DatabaseClient;
-    let authService: AuthService;
     let embedder: MockEmbedder;
     let rememberTool: RememberTool;
     let userId: string;
-    let apiKey: string;
 
     beforeAll(async () => {
         // Start PostgreSQL container with pgvector
@@ -62,13 +59,10 @@ describe('Tier limit stress test', () => {
         userId = userRes.rows[0].id;
 
         // Create an API key for the user
-        authService = new AuthService(adminClient);
-        const { key } = await authService.generateApiKey(userId, 'stress test key');
-        apiKey = key;
 
         // Create embedder and tool
         embedder = new MockEmbedder();
-        rememberTool = new RememberTool(adminClient, embedder, authService);
+        rememberTool = new RememberTool(adminClient, embedder);
     });
 
     afterAll(async () => {
@@ -80,7 +74,7 @@ describe('Tier limit stress test', () => {
         const concurrency = 200;
         const promises = Array.from({ length: concurrency }, (_, i) => {
             const content = `memory ${i} at ${Date.now()}`;
-            return rememberTool.remember(apiKey, content);
+            return rememberTool.remember(userId, 'free', content);
         });
         const results = await Promise.allSettled(promises);
         const succeeded = results.filter(r => r.status === 'fulfilled');

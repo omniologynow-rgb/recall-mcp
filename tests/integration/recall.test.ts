@@ -1,7 +1,6 @@
 import { describe, it, beforeAll, afterAll, expect } from 'vitest';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { DatabaseClient } from '../../src/db/client.js';
-import { AuthService } from '../../src/auth/index.js';
 import { MockEmbedder } from '../../src/embedder/mock.js';
 import { RecallTool } from '../../src/tools/recall.js';
 import crypto from 'crypto';
@@ -34,11 +33,9 @@ async function applyMigrations(client: DatabaseClient) {
 describe('Recall tool integration', () => {
     let container: any;
     let adminClient: DatabaseClient;
-    let authService: AuthService;
     let embedder: MockEmbedder;
     let recallTool: RecallTool;
     let userId: string;
-    let apiKey: string;
 
     beforeAll(async () => {
         // Start PostgreSQL container with pgvector
@@ -63,13 +60,10 @@ describe('Recall tool integration', () => {
         userId = userRes.rows[0].id;
 
         // Create an API key for the user
-        authService = new AuthService(adminClient);
-        const { key } = await authService.generateApiKey(userId, 'test key');
-        apiKey = key;
 
         // Create embedder and tool
         embedder = new MockEmbedder();
-        recallTool = new RecallTool(adminClient, embedder, authService);
+        recallTool = new RecallTool(adminClient, embedder);
 
         // Seed a few memories with different content
         // Use adminClient.withUserContext to insert as the user
@@ -104,7 +98,7 @@ describe('Recall tool integration', () => {
     it('should return similar memories for a query', async () => {
         // MockEmbedder returns deterministic embedding based on text hash
         // Similarity between query 'fox' and seeded memories may be high
-        const results = await recallTool.recall(apiKey, 'fox', 'general');
+        const results = await recallTool.recall(userId, 'fox', 'general');
         expect(results).toBeInstanceOf(Array);
         // Should have at least one result (similarity >= 0.7)
         expect(results.length).toBeGreaterThan(0);
@@ -122,13 +116,13 @@ describe('Recall tool integration', () => {
 
     it('should filter by minSimilarity', async () => {
         // Set minSimilarity high enough to exclude all memories
-        const results = await recallTool.recall(apiKey, 'fox', 'general', 10, 0.99);
+        const results = await recallTool.recall(userId, 'fox', 'general', 10, 0.99);
         expect(results).toHaveLength(0);
     });
 
     it('should respect namespace filter', async () => {
         // Search in 'animals' namespace
-        const results = await recallTool.recall(apiKey, 'fox', 'animals');
+        const results = await recallTool.recall(userId, 'fox', 'animals');
         expect(results).toBeInstanceOf(Array);
         // All returned memories should belong to 'animals' namespace
         results.forEach(r => {
@@ -138,12 +132,12 @@ describe('Recall tool integration', () => {
 
     it('should enforce limit parameter', async () => {
         // Limit 1
-        const results = await recallTool.recall(apiKey, 'fox', 'general', 1);
+        const results = await recallTool.recall(userId, 'fox', 'general', 1);
         expect(results.length).toBeLessThanOrEqual(1);
     });
 
     it('should emit usage event on success', async () => {
-        await recallTool.recall(apiKey, 'test query');
+        await recallTool.recall(userId, 'test query');
         const events = await adminClient.withUserContext(userId, async (client) => {
             return client.query<{ event_type: string }>(
                 `SELECT event_type FROM usage_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,

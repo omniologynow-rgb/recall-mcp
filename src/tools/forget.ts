@@ -1,17 +1,12 @@
 import { DatabaseClient } from '../db/client.js';
-import { AuthService } from '../auth/index.js';
 import { ToolError } from '../errors/tool-error.js';
 
 export class ForgetTool {
     constructor(
         private db: DatabaseClient,
-        private auth: AuthService
     ) {}
 
-    async forget(apiKey: string, memoryId: string): Promise<boolean> {
-        // Authenticate API key
-        const { userId } = await this.auth.authenticate(apiKey);
-
+    async forget(userId: string, memoryId: string): Promise<boolean> {
         const deleted = await this.db.withUserContext(userId, async (client) => {
             // Delete memory, ensuring ownership
             const deleteRes = await client.query<{ id: string }>(

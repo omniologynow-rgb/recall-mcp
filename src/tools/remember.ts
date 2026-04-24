@@ -1,6 +1,5 @@
 import { DatabaseClient } from '../db/client.js';
 import type { Embedder } from '../embedder/index.js';
-import { AuthService } from '../auth/index.js';
 import { ToolError } from '../errors/tool-error.js';
 import { toSql } from 'pgvector';
 import crypto from 'crypto';
@@ -9,12 +8,9 @@ export class RememberTool {
     constructor(
         private db: DatabaseClient,
         private embedder: Embedder,
-        private auth: AuthService
     ) {}
 
-    async remember(apiKey: string, content: string, namespace: string = 'default'): Promise<string> {
-        // Authenticate API key
-        const { userId, tier } = await this.auth.authenticate(apiKey);
+    async remember(userId: string, tier: string, content: string, namespace: string = 'default'): Promise<string> {
         // Compute content hash (SHA-256)
         const contentHash = crypto.createHash('sha256').update(content).digest('hex');
         // Atomic insert with dedupe and tier enforcement
@@ -46,9 +42,7 @@ export class RememberTool {
                     throw ToolError.limitExceeded();
                 }
             }
-            // 3. Generate embedding (outside transaction? we need to keep transaction open)
-            // Move embedding generation before transaction? But we need to ensure tier limit passes.
-            // We'll generate inside transaction; it's fine.
+            // 3. Generate embedding
             const embedding = await this.embedder.embed(content);
             // 4. Insert memory
             const insertRes = await client.query<{ id: string }>(

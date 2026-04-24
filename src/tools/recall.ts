@@ -1,7 +1,5 @@
 import { DatabaseClient } from '../db/client.js';
 import type { Embedder } from '../embedder/index.js';
-import { AuthService } from '../auth/index.js';
-
 import { toSql } from 'pgvector';
 
 export interface RecallResult {
@@ -17,25 +15,21 @@ export class RecallTool {
     constructor(
         private db: DatabaseClient,
         private embedder: Embedder,
-        private auth: AuthService
     ) {}
 
     async recall(
-        apiKey: string,
+        userId: string,
         query: string,
         namespace: string = 'default',
         limit: number = 10,
         minSimilarity: number = 0.7
     ): Promise<RecallResult[]> {
-        // Authenticate API key
-        const { userId } = await this.auth.authenticate(apiKey);
         // Generate embedding for the query
         const embedding = await this.embedder.embed(query);
         const embeddingSql = toSql(embedding.vector);
 
         const results = await this.db.withUserContext(userId, async (client) => {
             // Cosine similarity: 1 - (embedding <=> memories.embedding)
-            // Filter by namespace (or all namespaces if default? We'll use exact match for now)
             // Ensure similarity >= minSimilarity
             const res = await client.query<{
                 id: string;

@@ -1,7 +1,6 @@
 import { describe, it, beforeAll, afterAll, expect } from 'vitest';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { DatabaseClient } from '../../src/db/client.js';
-import { AuthService } from '../../src/auth/index.js';
 import { MockEmbedder } from '../../src/embedder/mock.js';
 import { ForgetTool } from '../../src/tools/forget.js';
 import fs from 'fs/promises';
@@ -34,11 +33,9 @@ async function applyMigrations(client: DatabaseClient) {
 describe('Forget tool integration', () => {
     let container: any;
     let adminClient: DatabaseClient;
-    let authService: AuthService;
     let embedder: MockEmbedder;
     let forgetTool: ForgetTool;
     let userId: string;
-    let apiKey: string;
     let memoryId: string;
     let otherUserId: string;
     let otherMemoryId: string;
@@ -71,13 +68,10 @@ describe('Forget tool integration', () => {
         otherUserId = otherUserRes.rows[0].id;
 
         // Create API keys for both users (we only need one)
-        authService = new AuthService(adminClient);
-        const { key } = await authService.generateApiKey(userId, 'test key');
-        apiKey = key;
 
         // Create embedder and tool
         embedder = new MockEmbedder();
-        forgetTool = new ForgetTool(adminClient, authService);
+        forgetTool = new ForgetTool(adminClient);
 
         // Seed a memory for the primary user
         await adminClient.withUserContext(userId, async (client) => {
@@ -115,7 +109,7 @@ describe('Forget tool integration', () => {
     });
 
     it('should delete memory owned by user', async () => {
-        const success = await forgetTool.forget(apiKey, memoryId);
+        const success = await forgetTool.forget(userId, memoryId);
         expect(success).toBe(true);
 
         // Verify memory is gone
@@ -130,12 +124,12 @@ describe('Forget tool integration', () => {
 
     it('should reject delete if memory not found', async () => {
         const fakeId = crypto.randomUUID();
-        await expect(forgetTool.forget(apiKey, fakeId)).rejects.toThrow();
+        await expect(forgetTool.forget(userId, fakeId)).rejects.toThrow();
     });
 
     it('should reject delete if memory belongs to other user', async () => {
         // Attempt to delete other user's memory using primary user's API key
-        await expect(forgetTool.forget(apiKey, otherMemoryId)).rejects.toThrow();
+        await expect(forgetTool.forget(userId, otherMemoryId)).rejects.toThrow();
         // Verify other user's memory still exists
         const memory = await adminClient.withUserContext(otherUserId, async (client) => {
             return client.query<{ id: string }>(
@@ -162,7 +156,7 @@ describe('Forget tool integration', () => {
             );
             tempId = res.rows[0].id;
         });
-        await forgetTool.forget(apiKey, tempId!);
+        await forgetTool.forget(userId, tempId!);
         const events = await adminClient.withUserContext(userId, async (client) => {
             return client.query<{ event_type: string }>(
                 `SELECT event_type FROM usage_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,

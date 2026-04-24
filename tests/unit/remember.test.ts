@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RememberTool } from '../../src/tools/remember.js';
-import { DatabaseClient } from '../../src/db/client.js';
-import { Embedder } from '../../src/embedder/index.js';
-import { AuthService } from '../../src/auth/index.js';
+import type { DatabaseClient } from '../../src/db/client.js';
+import type { Embedder } from '../../src/embedder/index.js';
 
 // Mocks
 const mockDbClient = {
@@ -14,22 +13,15 @@ const mockEmbedder = {
     embedBatch: vi.fn(),
 } as unknown as Embedder;
 
-const mockAuthService = {
-    authenticate: vi.fn(),
-} as unknown as AuthService;
-
 describe('RememberTool', () => {
     let rememberTool: RememberTool;
-    const apiKey = 'recall_live_abcdefghijklmnopqrstuvwxyz012345';
     const userId = '123e4567-e89b-12d3-a456-426614174000';
     const tier = 'free';
     const embedding = { vector: new Array(1536).fill(0.1), dimensions: 1536 };
 
     beforeEach(() => {
         vi.clearAllMocks();
-        rememberTool = new RememberTool(mockDbClient, mockEmbedder, mockAuthService);
-        // Default mock for auth
-        (mockAuthService.authenticate as any).mockResolvedValue({ userId, tier });
+        rememberTool = new RememberTool(mockDbClient, mockEmbedder);
         // Default mock for embedder
         (mockEmbedder.embed as any).mockResolvedValue(embedding);
         // Default mock for withUserContext
@@ -65,10 +57,9 @@ describe('RememberTool', () => {
     });
 
     describe('remember', () => {
-        it('should authenticate API key and store memory', async () => {
-            const result = await rememberTool.remember(apiKey, 'test content');
+        it('should store memory with content', async () => {
+            const result = await rememberTool.remember(userId, 'free', 'test content');
             expect(result).toBe('memory-id');
-            expect(mockAuthService.authenticate).toHaveBeenCalledWith(apiKey);
             expect(mockEmbedder.embed).toHaveBeenCalledWith('test content');
             // Should have called withUserContext once (atomic transaction)
             expect(mockDbClient.withUserContext).toHaveBeenCalledTimes(1);
@@ -95,7 +86,7 @@ describe('RememberTool', () => {
                 };
                 return fn(mockClient);
             });
-            await expect(rememberTool.remember(apiKey, 'test')).rejects.toMatchObject({
+            await expect(rememberTool.remember(userId, 'free', 'test')).rejects.toMatchObject({
                 code: 'limit_exceeded',
                 message: expect.stringContaining('Free tier allows 100 memories'),
                 retryable: false,
@@ -127,12 +118,11 @@ describe('RememberTool', () => {
                 };
                 return fn(mockClient);
             });
-            await expect(rememberTool.remember(apiKey, 'test')).resolves.toBe('memory-id');
+            await expect(rememberTool.remember(userId, 'free', 'test')).resolves.toBe('memory-id');
             expect(mockDbClient.withUserContext).toHaveBeenCalledTimes(1);
         });
 
         it('should not enforce limit for paid tiers', async () => {
-            (mockAuthService.authenticate as any).mockResolvedValue({ userId, tier: 'starter' });
             // Paid tier should skip count check (no SELECT COUNT(*))
             let countQueryCalled = false;
             (mockDbClient.withUserContext as any).mockImplementation((_, fn) => {
@@ -158,7 +148,7 @@ describe('RememberTool', () => {
                 };
                 return fn(mockClient);
             });
-            await expect(rememberTool.remember(apiKey, 'test')).resolves.toBe('memory-id');
+            await expect(rememberTool.remember(userId, 'starter', 'test')).resolves.toBe('memory-id');
             expect(countQueryCalled).toBe(false);
         });
 
@@ -184,7 +174,7 @@ describe('RememberTool', () => {
                 };
                 return fn(mockClient);
             });
-            const result = await rememberTool.remember(apiKey, 'same content');
+            const result = await rememberTool.remember(userId, 'free', 'same content');
             expect(result).toBe('dedupe-id');
             // Verify duplicate check query was called
             expect(queries).toEqual([

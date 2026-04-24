@@ -46,7 +46,8 @@
     "pino": "^10.3.1",
     "raw-body": "^3.0.2",
     "supabase": "^2.93.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^11.14.0",
