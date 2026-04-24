@@ -1,5 +1,24 @@
 # Future Work & Known Gaps
 
+## Transport: Stateless + `enableJsonResponse: true`
+
+**Rationale (R2.2):** The MCP Streamable HTTP transport was configured without a
+`sessionIdGenerator` (stateless mode) and with `enableJsonResponse: true`.
+
+- **Stateless** means each HTTP request is handled independently with no session
+affinity. This avoids requiring an `initialize` handshake before `tools/call`,
+simplifying the client contract. The downside is no SSE streaming for
+gradual tool responses — each response is a single HTTP 200 JSON body.
+- **`enableJsonResponse: true`** returns JSON-RPC response bodies directly
+instead of SSE `text/event-stream`. This is simpler for most MCP clients
+and avoids needing SSE parsing logic on the client side.
+
+**⚠️ Verify before production deploy:** Confirm that MCPize's hosting layer
+accepts stateless-mode JSON responses. Some MCP hosting platforms expect
+sessionful SSE streaming. If MCPize requires sessionful mode, re-enable
+`sessionIdGenerator` and ensure clients send the `initialize` handshake
+before their first tool call request.
+
 ## MCPize Webhook Integration
 
 The current webhook implementation (`POST /webhooks/mcpize/subscription`) uses a placeholder HMAC‑SHA256 verification with the following assumptions:
