@@ -1,6 +1,6 @@
 import fastify, { type FastifyInstance } from 'fastify';
 import helmet from '@fastify/helmet';
-import { randomUUID } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { DatabaseClient } from './db/client.js';
 import { AuthService } from './auth/index.js';
 import { HealthService } from './health.js';
@@ -27,6 +27,9 @@ export interface ServerOptions {
   allowedOrigins?: string[] | undefined;
 }
 
+// Module-level store for raw body buffers, keyed by IncomingMessage reference
+const rawBodyStore = new WeakMap<object, Buffer>();
+
 export class RecallServer {
   public readonly fastify: FastifyInstance;
   private db: DatabaseClient;
@@ -34,6 +37,7 @@ export class RecallServer {
   private health: HealthService;
   private mcpServer: McpServer;
   private transport: StreamableHTTPServerTransport | StdioServerTransport | null = null;
+  private transportType: 'stdio' | 'http' = 'http';
   private logger: pino.Logger;
   private version: string;
   private isShuttingDown = false;
@@ -59,7 +63,7 @@ export class RecallServer {
     this.auth = new AuthService(this.db);
     this.health = new HealthService(this.db, embedder, this.version);
     this.mcpServer = this.createMcpServer();
-    this.setupRoutes();
+    // Routes will be set up in start() based on transport type
     this.setupGracefulShutdown();
   }
 
@@ -132,7 +136,7 @@ export class RecallServer {
       },
       {
         name: 'update_memory',
-        description: 'Update a memory’s content and/or namespace. Re‑embeds the content.',
+        description: 'Update a memory\'s content and/or namespace. Re-embeds the content.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -213,9 +217,35 @@ export class RecallServer {
     return server;
   }
 
-  private setupRoutes() {
+  private setupRoutes(transportType: 'stdio' | 'http') {
+    // Only register HTTP routes if transport is HTTP
+    if (transportType !== 'http') {
+      return;
+    }
+
     // Register helmet for security headers
     this.fastify.register(helmet);
+
+    // Custom JSON body parser that captures the raw buffer for webhook HMAC.
+    // Stores the raw body using a module-level WeakMap keyed by the IncomingMessage.
+    this.fastify.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
+      if (body == null || (Buffer.isBuffer(body) && body.length === 0)) {
+        const err: any = new Error('Body cannot be empty');
+        err.statusCode = 400;
+        done(err, undefined);
+        return;
+      }
+      // Store raw body buffer, keyed by the raw IncomingMessage
+      rawBodyStore.set(req, body as Buffer);
+
+      try {
+        const json = JSON.parse(body.toString('utf8'));
+        done(null, json);
+      } catch (err: any) {
+        err.statusCode = 400;
+        done(err, undefined);
+      }
+    });
 
     // Health endpoint
     this.fastify.get('/health', async (_request, reply) => {
@@ -233,45 +263,107 @@ export class RecallServer {
       }
     });
 
-    // MCPize webhook endpoint (placeholder)
-    this.fastify.post('/webhooks/mcpize/subscription', async (_request, reply) => {
-      // TODO: Implement HMAC-SHA256 verification
-      // For now, just acknowledge
-      reply.code(200).send({ received: true });
+    // MCPize webhook endpoint with HMAC verification
+    this.fastify.post('/webhooks/mcpize/subscription', async (request, reply) => {
+      const secret = process.env.MCPIZE_BILLING_WEBHOOK_SECRET;
+      if (!secret) {
+        this.logger.warn('MCPIZE_BILLING_WEBHOOK_SECRET not set, rejecting webhook');
+        reply.code(401).send({ error: 'Webhook secret not configured' });
+        return;
+      }
+
+      const signatureHeader = request.headers['x-mcpize-signature'];
+      if (!signatureHeader || typeof signatureHeader !== 'string') {
+        reply.code(401).send({ error: 'Missing signature header' });
+        return;
+      }
+
+      // Get the raw body via the module-level WeakMap (populated by content type parser)
+      const rawBody = rawBodyStore.get(request as object);
+      if (!rawBody) {
+        reply.code(400).send({ error: 'Missing request body' });
+        return;
+      }
+
+      const computedHmac = createHmac('sha256', secret).update(rawBody).digest('hex');
+      const providedHmac = signatureHeader;
+
+      // Use timing-safe comparison
+      let isValid = false;
+      try {
+        isValid = timingSafeEqual(Buffer.from(computedHmac, 'hex'), Buffer.from(providedHmac, 'hex'));
+      } catch {
+        // Length mismatch
+      }
+
+      if (!isValid) {
+        this.logger.warn('Invalid HMAC signature for webhook');
+        reply.code(401).send({ error: 'Invalid signature' });
+        return;
+      }
+
+      // Use parsed JSON body for payload fields
+      const body = request.body as any;
+      const { userId, tier } = body;
+      if (!userId || !tier) {
+        reply.code(400).send({ error: 'Missing userId or tier' });
+        return;
+      }
+
+      try {
+        await this.db.query(
+          'UPDATE users SET tier = $1 WHERE id = $2',
+          [tier, userId]
+        );
+        this.logger.info({ userId, tier }, 'Updated user tier via webhook');
+        reply.code(200).send({ updated: true });
+      } catch (error) {
+        this.logger.error({ error, userId, tier }, 'Failed to update user tier');
+        reply.code(500).send({ error: 'Internal server error' });
+      }
     });
 
+    // Auth preHandler for /mcp route
+    const authPreHandler = async (request: any, reply: any, done: (err?: Error) => void) => {
+      const authHeader = request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        reply.code(401).send({ error: 'Missing or invalid Authorization header' });
+        return done();
+      }
+      const apiKey = authHeader.slice('Bearer '.length);
+      try {
+        const { userId } = await this.auth.authenticate(apiKey);
+        (request.raw as any).auth = { userId };
+        done();
+      } catch {
+        // Do not leak whether the key existed
+        reply.code(401).send({ error: 'Unauthorized' });
+        return done();
+      }
+    };
+
     // MCP endpoint
-    this.fastify.post('/mcp', async (request, reply) => {
+    this.fastify.post('/mcp', { preHandler: authPreHandler }, async (request, reply) => {
       if (this.isShuttingDown) {
         reply.code(503).send({ error: 'Server is shutting down' });
         return;
       }
 
-      // Auth middleware
-      const authHeader = request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        reply.code(401).send({ error: 'Missing or invalid Authorization header' });
-        return;
-      }
-      const apiKey = authHeader.slice('Bearer '.length);
-      let userId: string;
-      try {
-        const { userId: uid } = await this.auth.authenticate(apiKey);
-        userId = uid;
-      } catch {
-        // Do not leak whether the key existed
+      // Auth info already attached by preHandler
+      const auth = (request.raw as any).auth;
+      if (!auth || !auth.userId) {
         reply.code(401).send({ error: 'Unauthorized' });
         return;
       }
-
-      // Attach auth info to request for transport
-      (request.raw as any).auth = { userId };
 
       // Handle MCP request via transport
       if (!this.transport || !(this.transport instanceof StreamableHTTPServerTransport)) {
         reply.code(500).send({ error: 'Transport not ready' });
         return;
       }
+      // Hijack reply so Fastify doesn't try to double-write the response;
+      // the MCP SDK's StreamableHTTP transport already writes to reply.raw
+      reply.hijack();
       await this.transport.handleRequest(request.raw, reply.raw, request.body);
     });
 
@@ -287,8 +379,23 @@ export class RecallServer {
       process.on(signal, async () => {
         this.logger.info(`Received ${signal}, starting graceful shutdown`);
         this.isShuttingDown = true;
-        await this.stop();
-        process.exit(0);
+
+        // Force exit after 30 seconds
+        const forceExitTimer = setTimeout(() => {
+          this.logger.error('Graceful shutdown timeout exceeded, forcing exit');
+          process.exit(1);
+        }, 30_000);
+        forceExitTimer.unref(); // don't keep event loop alive solely for this timer
+
+        try {
+          await this.stop();
+          clearTimeout(forceExitTimer);
+          process.exit(0);
+        } catch (error) {
+          this.logger.error({ error }, 'Error during graceful shutdown');
+          clearTimeout(forceExitTimer);
+          process.exit(1);
+        }
       });
     });
   }
@@ -298,13 +405,14 @@ export class RecallServer {
     this.logger.info('Database client ready');
 
     // Choose transport based on env or options
-    const transportType = this.options.transport || (process.env.TRANSPORT as 'stdio' | 'http') || 'http';
-    if (transportType === 'stdio') {
+    this.transportType = this.options.transport || (process.env.TRANSPORT as 'stdio' | 'http') || 'http';
+    if (this.transportType === 'stdio') {
       this.transport = new StdioServerTransport();
       this.logger.info('Using stdio transport');
     } else {
       const transportOptions: StreamableHTTPServerTransportOptions = {
-        sessionIdGenerator: () => randomUUID(),
+        // No sessionIdGenerator — stateless mode (each request handled independently)
+        enableJsonResponse: true,
         enableDnsRebindingProtection: this.options.enableDnsRebindingProtection ?? (getConfig().isDev ? false : true),
         allowedHosts: this.options.allowedHosts,
         allowedOrigins: this.options.allowedOrigins,
@@ -316,7 +424,10 @@ export class RecallServer {
     // Connect MCP server to transport
     await this.mcpServer.connect(this.transport as any);
 
-    if (transportType === 'http') {
+    // Set up HTTP routes only for HTTP transport
+    this.setupRoutes(this.transportType);
+
+    if (this.transportType === 'http') {
       const port = this.options.port || (process.env.PORT ? parseInt(process.env.PORT, 10) : 8080) || 8080;
       const host = this.options.host || '0.0.0.0';
       await this.fastify.listen({ port, host });

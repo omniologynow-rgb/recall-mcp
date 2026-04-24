@@ -55,17 +55,20 @@ describe('HTTP health endpoints', () => {
         process.env.DATABASE_URL = connectionString;
         process.env.OPENAI_API_KEY = 'test-key'; // not used because MockEmbedder
 
-        // Create server with HTTP transport (but don't start listening)
+        // Create server with HTTP transport and start it
         const embedder = new MockEmbedder();
         server = new RecallServer(embedder, {
             transport: 'http',
-            port: 0, // random port (not used since we won't call start)
+            port: 0, // random port
             enableDnsRebindingProtection: false,
         });
-        // Note: we don't call server.start() because we'll use fastify.inject()
+        await server.start();
     });
 
     afterAll(async () => {
+        if (server) {
+            await server.stop();
+        }
         // Restore environment
         process.env = originalEnv;
         if (container) {
