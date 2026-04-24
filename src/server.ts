@@ -213,8 +213,10 @@ export class RecallServer {
           case 'recall': {
             const validated = validateArgs(RecallInputSchema, args);
             const results = await recallTool.recall(auth.userId, validated.query, validated.namespace, validated.limit, validated.threshold);
-            const output = validateOutput(RecallOutputSchema, results);
-            return { content: [{ type: 'text', text: JSON.stringify(output) }] };
+            // Validate raw results, then wrap in <memory> tags for prompt-injection defense
+            validateOutput(RecallOutputSchema, results);
+            const formatted = RecallTool.formatBatchForRecall(results);
+            return { content: [{ type: 'text', text: formatted }] };
           }
           case 'list_memories': {
             const validated = validateArgs(ListMemoriesInputSchema, args);

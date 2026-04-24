@@ -63,4 +63,33 @@ export class RecallTool {
         });
         return results;
     }
+
+    /**
+     * Format a recall result into a prompt-injection-resistant <memory> tag.
+     *
+     * The raw content is placed inside a <content> sub-tag so that any
+     * </memory> or <content> present in the stored content cannot break out
+     * of the wrapper. Any literal < or > inside the content is HTML-escaped
+     * to &lt; and &gt; (safe inside the <content> block since XML parsers
+     * treat that as text content, and string-based checks can match the
+     * literal entity).
+     */
+    static formatMemoryTag(memory: RecallResult): string {
+        const safeContent = memory.content
+            .replace(/&/g, '&amp;')   // & first to avoid double-encoding
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        return [
+            `<memory id="${memory.id}" namespace="${memory.namespace}" created="${memory.created_at}">`,
+            `<content>${safeContent}</content>`,
+            `</memory>`,
+        ].join('\n');
+    }
+
+    /**
+     * Format an array of recall results into a combined string of <memory> tags.
+     */
+    static formatBatchForRecall(results: RecallResult[]): string {
+        return results.map(r => RecallTool.formatMemoryTag(r)).join('\n\n');
+    }
 }
