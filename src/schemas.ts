@@ -94,7 +94,14 @@ export const ForgetInputSchema = z.discriminatedUnion('mode', [
             .max(100)
             .describe('Maximum memories to delete (1-100)'),
     }),
-]);
+]).refine(
+    (data) => {
+        if (data.mode === 'by_id') return true;
+        // by_query: require at least one of namespace or query
+        return data.namespace !== undefined || data.query !== undefined;
+    },
+    { message: 'by_query mode requires at least one of namespace or query' }
+);
 
 // ─── Output Schemas ──────────────────────────────────────────────────────────
 

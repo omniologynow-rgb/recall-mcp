@@ -256,6 +256,39 @@ describe('ForgetInputSchema', () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it('should reject by_query with neither namespace nor query (mass-delete guard)', () => {
+      const result = ForgetInputSchema.safeParse({
+        mode: 'by_query',
+        confirm: true,
+        max_delete: 50,
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const messages = result.error.issues.map(i => i.message);
+        expect(messages).toContain('by_query mode requires at least one of namespace or query');
+      }
+    });
+
+    it('should accept by_query with query only (no namespace)', () => {
+      const result = ForgetInputSchema.safeParse({
+        mode: 'by_query',
+        query: 'delete-me',
+        confirm: true,
+        max_delete: 50,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept by_query with namespace only (no query)', () => {
+      const result = ForgetInputSchema.safeParse({
+        mode: 'by_query',
+        namespace: 'temp',
+        confirm: true,
+        max_delete: 50,
+      });
+      expect(result.success).toBe(true);
+    });
   });
 
   it('should reject unknown mode', () => {
