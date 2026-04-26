@@ -96,7 +96,7 @@ export class RecallServer {
     const recallTool = new RecallTool(this.db, this.embedder);
     const listTool = new ListMemoriesTool(this.db);
     const updateTool = new UpdateMemoryTool(this.db, this.embedder);
-    const forgetTool = new ForgetTool(this.db);
+    const forgetTool = new ForgetTool(this.db, this.embedder);
 
     // Tool definitions for MCP (auth is HTTP-header-only, not in tool args)
     const tools: Tool[] = [
@@ -156,20 +156,19 @@ export class RecallServer {
       },
       {
         name: 'forget',
-        description: 'Permanently delete a memory by ID or query.',
+        description: 'Delete a memory by ID (two-step: preview → confirm) or by ID.',
         inputSchema: {
           type: 'object',
           properties: {
-            mode: { type: 'string', enum: ['by_id', 'by_query'], description: 'Delete mode' },
+            mode: { type: 'string', enum: ['by_id', 'by_query'], description: "Delete mode: 'by_id' or 'by_query'" },
             id: { type: 'string', format: 'uuid', description: 'Memory ID (for mode: by_id)' },
-            confirm: { type: 'boolean', description: 'Must be true (for mode: by_query)' },
-            max_delete: { type: 'number', description: 'Max memories to delete (for mode: by_query)' },
+            query: { type: 'string', description: 'Semantic search query (for mode: by_query preview)' },
+            namespace: { type: 'string', description: 'Namespace scope (for mode: by_query preview)' },
+            threshold: { type: 'number', description: 'Minimum similarity 0.0-1.0 (for mode: by_query preview)' },
+            limit: { type: 'number', description: 'Max preview results 1-50 (for mode: by_query preview)' },
+            confirmation_token: { type: 'string', description: 'Token from preview (for mode: by_query confirm)' },
           },
           required: ['mode'],
-          oneOf: [
-            { required: ['mode', 'id'] },
-            { required: ['mode', 'confirm', 'max_delete'] },
-          ],
         },
       },
     ];
@@ -236,9 +235,19 @@ export class RecallServer {
               const success = await forgetTool.forget(auth.userId, validated.id);
               const output = validateOutput(ForgetOutputSchema, { success });
               return { content: [{ type: 'text', text: JSON.stringify(output) }] };
+            } else if ('confirmation_token' in validated) {
+              // by_query confirm step
+              const result = await forgetTool.forgetByQueryConfirm(auth.userId, validated.confirmation_token);
+              const output = validateOutput(ForgetOutputSchema, result);
+              return { content: [{ type: 'text', text: JSON.stringify(output) }] };
             } else {
-              // by_query mode — not yet implemented
-              return { content: [{ type: 'text', text: JSON.stringify({ error: { code: 'not_implemented', message: 'forget by_query is not yet implemented', retryable: false } }) }] };
+              // by_query preview step
+              const result = await forgetTool.forgetByQueryPreview(
+                auth.userId, validated.query, validated.namespace,
+                validated.threshold, validated.limit,
+              );
+              const output = validateOutput(ForgetOutputSchema, result);
+              return { content: [{ type: 'text', text: JSON.stringify(output) }] };
             }
           }
           default:

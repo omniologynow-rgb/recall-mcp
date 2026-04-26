@@ -92,31 +92,58 @@ export const UpdateMemoryInputSchema = z
         { message: 'At least one of content or metadata must be provided' }
     );
 
-export const ForgetInputSchema = z.discriminatedUnion('mode', [
-    z.object({
-        mode: z.literal('by_id'),
-        id: z.string().uuid('Memory ID must be a valid UUID'),
-    }),
-    z.object({
-        mode: z.literal('by_query'),
-        namespace: z.string().optional().describe('Namespace to search'),
-        query: z.string().optional().describe('Search query'),
-        confirm: z.literal(true).describe('Must be true'),
-        max_delete: z
-            .number()
-            .int()
-            .min(1)
-            .max(100)
-            .describe('Maximum memories to delete (1-100)'),
-    }),
-]).refine(
-    (data) => {
-        if (data.mode === 'by_id') return true;
-        // by_query: require at least one of namespace or query
-        return data.namespace !== undefined || data.query !== undefined;
-    },
-    { message: 'by_query mode requires at least one of namespace or query' }
-);
+// ─── Forget schema (by_id + two-step by_query) ────────────────────────────────
+
+const ForgetByIdSchema = z.object({
+    mode: z.literal('by_id'),
+    id: z.string().uuid('Memory ID must be a valid UUID'),
+});
+
+const ForgetQueryPreviewSchema = z.object({
+    mode: z.literal('by_query'),
+    query: z
+        .string()
+        .min(1, 'Query must not be empty')
+        .describe('Semantic search query'),
+    namespace: z
+        .string()
+        .optional()
+        .describe('Namespace to search (omit for all namespaces)'),
+    threshold: z
+        .number()
+        .min(0)
+        .max(1)
+        .default(0.85)
+        .describe('Minimum similarity threshold 0.0-1.0 (default: 0.85)'),
+    limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .default(10)
+        .describe('Maximum matches to preview (1-50, default: 10)'),
+});
+
+const ForgetQueryConfirmSchema = z.object({
+    mode: z.literal('by_query'),
+    confirmation_token: z
+        .string()
+        .min(1, 'Confirmation token must not be empty')
+        .describe('Confirmation token from a previous forget_by_query call'),
+});
+
+export const ForgetInputSchema = z
+    .union([ForgetByIdSchema, ForgetQueryPreviewSchema, ForgetQueryConfirmSchema])
+    .refine(
+        (data) => {
+            if (data.mode === 'by_id') return true;
+            if ('confirmation_token' in data) return true; // confirm step
+            // by_query preview: require at least one of query or namespace
+            // (query is already required by schema, but namespace is optional)
+            return true; // query is already required by ForgetQueryPreviewSchema
+        },
+        { message: 'by_query mode requires a search query' }
+    );
 
 // ─── Output Schemas ──────────────────────────────────────────────────────────
 
@@ -166,9 +193,26 @@ export const UpdateMemoryOutputSchema = z.object({
     success: z.boolean(),
 });
 
-export const ForgetOutputSchema = z.object({
-    success: z.boolean(),
-});
+export const ForgetOutputSchema = z.union([
+    z.object({ success: z.literal(true) }),
+    z.object({
+        preview: z.literal(true),
+        matches: z.array(
+            z.object({
+                id: z.string(),
+                content: z.string(),
+                similarity: z.number().min(0).max(1),
+            })
+        ),
+        total_matches: z.number().int().min(0),
+        confirmation_token: z.string(),
+        expires_at: z.string(),
+    }),
+    z.object({
+        success: z.literal(true),
+        deleted_count: z.number().int().min(0),
+    }),
+]);
 
 // ─── Validation helpers ──────────────────────────────────────────────────────
 

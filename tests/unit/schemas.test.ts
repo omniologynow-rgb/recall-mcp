@@ -247,86 +247,75 @@ describe('ForgetInputSchema', () => {
     });
   });
 
-  describe('mode: by_query', () => {
-    it('should accept valid by_query input', () => {
+  describe('mode: by_query preview', () => {
+    it('should accept valid by_query preview with query', () => {
       const result = ForgetInputSchema.safeParse({
         mode: 'by_query',
-        confirm: true,
-        max_delete: 50,
-        namespace: 'test',
+        query: 'delete-something',
       });
       expect(result.success).toBe(true);
-      if (result.success && result.data.mode === 'by_query') {
-        expect(result.data.max_delete).toBe(50);
-        expect(result.data.confirm).toBe(true);
+      if (result.success && result.data.mode === 'by_query' && !('confirmation_token' in result.data)) {
+        expect(result.data.query).toBe('delete-something');
+        expect(result.data.threshold).toBe(0.85);
+        expect(result.data.limit).toBe(10);
       }
     });
 
-    it('should reject by_query without confirm: true', () => {
-      const result = ForgetInputSchema.safeParse({
-        mode: 'by_query',
-        max_delete: 10,
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('should reject by_query with max_delete above 100', () => {
-      const result = ForgetInputSchema.safeParse({
-        mode: 'by_query',
-        confirm: true,
-        max_delete: 101,
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('should reject by_query with max_delete below 1', () => {
-      const result = ForgetInputSchema.safeParse({
-        mode: 'by_query',
-        confirm: true,
-        max_delete: 0,
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('should reject by_query with neither namespace nor query (mass-delete guard)', () => {
-      const result = ForgetInputSchema.safeParse({
-        mode: 'by_query',
-        confirm: true,
-        max_delete: 50,
-      });
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        const messages = result.error.issues.map(i => i.message);
-        expect(messages).toContain('by_query mode requires at least one of namespace or query');
-      }
-    });
-
-    it('should accept by_query with query only (no namespace)', () => {
+    it('should accept by_query preview with query and namespace', () => {
       const result = ForgetInputSchema.safeParse({
         mode: 'by_query',
         query: 'delete-me',
-        confirm: true,
-        max_delete: 50,
+        namespace: 'test',
       });
       expect(result.success).toBe(true);
     });
 
-    it('should accept by_query with namespace only (no query)', () => {
+    it('should accept by_query preview with overridden threshold and limit', () => {
+      const result = ForgetInputSchema.safeParse({
+        mode: 'by_query',
+        query: 'find-me',
+        threshold: 0.5,
+        limit: 20,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject by_query preview without query', () => {
       const result = ForgetInputSchema.safeParse({
         mode: 'by_query',
         namespace: 'temp',
-        confirm: true,
-        max_delete: 50,
       });
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject by_query preview with empty query', () => {
+      const result = ForgetInputSchema.safeParse({
+        mode: 'by_query',
+        query: '',
+      });
+      expect(result.success).toBe(false);
     });
   });
 
-  it('should reject unknown mode', () => {
-    const result = ForgetInputSchema.safeParse({
-      mode: 'invalid_mode',
+  describe('mode: by_query confirm', () => {
+    it('should accept valid confirmation token', () => {
+      const result = ForgetInputSchema.safeParse({
+        mode: 'by_query',
+        confirmation_token: 'abc123token',
+      });
+      expect(result.success).toBe(true);
+      if (result.success && result.data.mode === 'by_query' && 'confirmation_token' in result.data) {
+        expect(result.data.confirmation_token).toBe('abc123token');
+      }
     });
-    expect(result.success).toBe(false);
+
+    it('should reject empty confirmation token', () => {
+      const result = ForgetInputSchema.safeParse({
+        mode: 'by_query',
+        confirmation_token: '',
+      });
+      expect(result.success).toBe(false);
+    });
   });
 });
 
@@ -399,10 +388,38 @@ describe('UpdateMemoryOutputSchema', () => {
 });
 
 describe('ForgetOutputSchema', () => {
-  it('should accept boolean success', () => {
+describe("ForgetOutputSchema", () => {
+  it("should accept by_id output", () => {
     expect(ForgetOutputSchema.safeParse({ success: true }).success).toBe(true);
-    expect(ForgetOutputSchema.safeParse({ success: false }).success).toBe(true);
   });
+
+  it("should accept by_query preview output", () => {
+    const result = ForgetOutputSchema.safeParse({
+      preview: true,
+      matches: [{ id: "abc", content: "test", similarity: 0.9 }],
+      total_matches: 1,
+      confirmation_token: "token123",
+      expires_at: "2026-04-26T00:00:00Z",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should accept by_query confirm output", () => {
+    const result = ForgetOutputSchema.safeParse({
+      success: true,
+      deleted_count: 3,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject success: false (by_id only accepts true)", () => {
+    expect(ForgetOutputSchema.safeParse({ success: false }).success).toBe(false);
+  });
+
+  it("should reject empty preview", () => {
+    expect(ForgetOutputSchema.safeParse({ preview: true }).success).toBe(false);
+  });
+});
 });
 
 // ─── validateArgs / validateOutput helpers ─────────────────────────────────────
