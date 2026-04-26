@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   RememberInputSchema,
+  MetadataSchema,
   RecallInputSchema,
   ListMemoriesInputSchema,
   UpdateMemoryInputSchema,
@@ -52,6 +53,36 @@ describe('RememberInputSchema', () => {
   it('should reject missing content', () => {
     const result = RememberInputSchema.safeParse({ namespace: 'test' });
     expect(result.success).toBe(false);
+  });
+});
+
+// ─── MetadataSchema ───────────────────────────────────────────────────────────
+
+describe('MetadataSchema', () => {
+  it('should accept valid metadata', () => {
+    const result = MetadataSchema.safeParse({ key: 'value', num: 42 });
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept empty metadata', () => {
+    const result = MetadataSchema.safeParse({});
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept metadata up to 4096 bytes', () => {
+    const largeValue = 'x'.repeat(4000); // ~4KB value, well within 4096
+    const result = MetadataSchema.safeParse({ key: largeValue });
+    expect(result.success).toBe(true);
+  });
+
+  it('should reject metadata exceeding 4096 bytes serialized', () => {
+    const hugeValue = 'x'.repeat(5000); // produces >4096 bytes serialized
+    const result = MetadataSchema.safeParse({ key: hugeValue });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const allMessages = result.error.issues.map(i => i.message).join(' ');
+      expect(allMessages).toContain('4096 bytes');
+    }
   });
 });
 

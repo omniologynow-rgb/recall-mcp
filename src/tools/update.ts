@@ -2,7 +2,7 @@ import { DatabaseClient } from '../db/client.js';
 import type { Embedder } from '../embedder/index.js';
 import { ToolError } from '../errors/tool-error.js';
 import { toSql } from 'pgvector';
-import crypto from 'crypto';
+import { normalizeContent, computeContentHash } from '../normalize.js';
 
 export class UpdateMemoryTool {
     constructor(
@@ -28,9 +28,10 @@ export class UpdateMemoryTool {
             const existingNamespace = existingRes.rows[0].namespace;
 
             if (content) {
-                const embedding = await this.embedder.embed(content);
+                const normalized = normalizeContent(content);
+                const embedding = await this.embedder.embed(normalized);
                 const embeddingSql = toSql(embedding.vector);
-                const contentHash = crypto.createHash('sha256').update(content).digest('hex');
+                const contentHash = computeContentHash(content);
 
                 // Check for duplicate content in the same namespace (excluding this memory)
                 const duplicateRes = await client.query<{ id: string }>(
@@ -47,7 +48,7 @@ export class UpdateMemoryTool {
                      SET content = $1, embedding = $2::vector, content_hash = $3, updated_at = now()
                      WHERE id = $4 AND user_id = $5
                      RETURNING id`,
-                    [content, embeddingSql, contentHash, memoryId, userId]
+                    [normalized, embeddingSql, contentHash, memoryId, userId]
                 );
                 if (updateRes.rows.length === 0) {
                     throw ToolError.internalError('Update failed');

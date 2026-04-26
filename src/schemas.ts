@@ -3,6 +3,24 @@ import { ToolError } from './errors/tool-error.js';
 
 // ─── Input Schemas ───────────────────────────────────────────────────────────
 
+/**
+ * Metadata schema with a ~4KB serialized JSON size cap.
+ * Any Record<string, unknown> is accepted as long as its
+ * JSON-stringified form fits in 4096 bytes.
+ */
+export const MetadataSchema = z
+    .record(z.string(), z.unknown())
+    .superRefine((val, ctx) => {
+        const json = JSON.stringify(val);
+        const bytes = Buffer.byteLength(json, 'utf8');
+        if (bytes > 4096) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Metadata must not exceed 4096 bytes serialized (got ${bytes} bytes)`,
+            });
+        }
+    });
+
 export const RememberInputSchema = z.object({
     content: z
         .string()
@@ -12,10 +30,7 @@ export const RememberInputSchema = z.object({
         .string()
         .default('default')
         .describe('Namespace (default: "default")'),
-    metadata: z
-        .record(z.string(), z.unknown())
-        .optional()
-        .describe('Optional metadata'),
+    metadata: MetadataSchema.optional().describe('Optional metadata'),
 });
 
 export const RecallInputSchema = z.object({
@@ -70,7 +85,7 @@ export const UpdateMemoryInputSchema = z
     .object({
         id: z.string().uuid('Memory ID must be a valid UUID'),
         content: z.string().optional().describe('New content'),
-        metadata: z.record(z.string(), z.unknown()).optional().describe('New metadata'),
+        metadata: MetadataSchema.optional().describe('New metadata'),
     })
     .refine(
         (data) => data.content !== undefined || data.metadata !== undefined,

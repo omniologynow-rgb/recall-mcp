@@ -206,7 +206,7 @@ export class RecallServer {
         switch (name) {
           case 'remember': {
             const validated = validateArgs(RememberInputSchema, args);
-            const id = await rememberTool.remember(auth.userId, auth.tier, validated.content, validated.namespace);
+            const id = await rememberTool.remember(auth.userId, auth.tier, validated.content, validated.namespace, validated.metadata);
             const output = validateOutput(RememberOutputSchema, { id });
             return { content: [{ type: 'text', text: JSON.stringify(output) }] };
           }

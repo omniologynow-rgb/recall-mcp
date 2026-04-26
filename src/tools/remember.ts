@@ -2,7 +2,7 @@ import { DatabaseClient } from '../db/client.js';
 import type { Embedder } from '../embedder/index.js';
 import { ToolError } from '../errors/tool-error.js';
 import { toSql } from 'pgvector';
-import crypto from 'crypto';
+import { normalizeContent, computeContentHash } from '../normalize.js';
 
 export class RememberTool {
     constructor(
@@ -10,9 +10,10 @@ export class RememberTool {
         private embedder: Embedder,
     ) {}
 
-    async remember(userId: string, tier: string, content: string, namespace: string = 'default'): Promise<string> {
-        // Compute content hash (SHA-256)
-        const contentHash = crypto.createHash('sha256').update(content).digest('hex');
+    async remember(userId: string, tier: string, content: string, namespace: string = 'default', metadata?: Record<string, unknown>): Promise<string> {
+        // Normalize content and compute hash for consistent dedup
+        const normalized = normalizeContent(content);
+        const contentHash = computeContentHash(content);
         // Atomic insert with dedupe and tier enforcement
         const memory = await this.db.withUserContext(userId, async (client) => {
             // 1. Check for duplicate
@@ -42,14 +43,14 @@ export class RememberTool {
                     throw ToolError.limitExceeded();
                 }
             }
-            // 3. Generate embedding
-            const embedding = await this.embedder.embed(content);
+            // 3. Generate embedding from normalized content
+            const embedding = await this.embedder.embed(normalized);
             // 4. Insert memory
             const insertRes = await client.query<{ id: string }>(
                 `INSERT INTO memories (user_id, namespace, content, metadata, embedding, content_hash)
-                 VALUES ($1, $2, $3, '{}', $4, $5)
+                 VALUES ($1, $2, $3, $4, $5, $6)
                  RETURNING id`,
-                [userId, namespace, content, toSql(embedding.vector), contentHash]
+                [userId, namespace, normalized, metadata ? JSON.stringify(metadata) : '{}', toSql(embedding.vector), contentHash]
             );
             // 5. Record usage event
             await client.query(
