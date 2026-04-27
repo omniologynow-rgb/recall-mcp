@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   RememberInputSchema,
   MetadataSchema,
+  MetadataFilterSchema,
   RecallInputSchema,
   ListMemoriesInputSchema,
   UpdateMemoryInputSchema,
@@ -86,6 +87,68 @@ describe('MetadataSchema', () => {
   });
 });
 
+// ─── MetadataFilterSchema ────────────────────────────────────────────────────
+
+describe('MetadataFilterSchema', () => {
+  it('should accept valid string values', () => {
+    const result = MetadataFilterSchema.safeParse({ key: 'value', color: 'blue' });
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept numeric values', () => {
+    const result = MetadataFilterSchema.safeParse({ count: 42, ratio: 3.14 });
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept boolean values', () => {
+    const result = MetadataFilterSchema.safeParse({ active: true, flagged: false });
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept mixed primitive values', () => {
+    const result = MetadataFilterSchema.safeParse({ name: 'test', count: 7, active: true });
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept empty object (no filter)', () => {
+    const result = MetadataFilterSchema.safeParse({});
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept up to 8 keys', () => {
+    const obj: Record<string, string | number | boolean> = {};
+    for (let i = 0; i < 8; i++) {
+      obj[`key${i}`] = `val${i}`;
+    }
+    const result = MetadataFilterSchema.safeParse(obj);
+    expect(result.success).toBe(true);
+  });
+
+  it('should reject more than 8 keys', () => {
+    const obj: Record<string, string | number | boolean> = {};
+    for (let i = 0; i < 9; i++) {
+      obj[`key${i}`] = `val${i}`;
+    }
+    const result = MetadataFilterSchema.safeParse(obj);
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject nested objects', () => {
+    const result = MetadataFilterSchema.safeParse({ nested: { inside: 'value' } });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject arrays', () => {
+    const result = MetadataFilterSchema.safeParse({ list: [1, 2, 3] });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject null values', () => {
+    const result = MetadataFilterSchema.safeParse({ key: null });
+    expect(result.success).toBe(false);
+  });
+});
+
 // ─── RecallInputSchema ────────────────────────────────────────────────────────
 
 describe('RecallInputSchema', () => {
@@ -140,6 +203,47 @@ describe('RecallInputSchema', () => {
 
   it('should reject threshold below 0', () => {
     const result = RecallInputSchema.safeParse({ query: 'test', threshold: -0.1 });
+    expect(result.success).toBe(false);
+  });
+
+  it('should accept valid metadata_filter', () => {
+    const result = RecallInputSchema.safeParse({
+      query: 'test',
+      metadata_filter: { source: 'web', priority: 1, processed: true },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.metadata_filter).toEqual({ source: 'web', priority: 1, processed: true });
+    }
+  });
+
+  it('should accept empty metadata_filter (no-op)', () => {
+    const result = RecallInputSchema.safeParse({ query: 'test', metadata_filter: {} });
+    expect(result.success).toBe(true);
+  });
+
+  it('should reject metadata_filter with more than 8 keys', () => {
+    const obj: Record<string, string | number | boolean> = {};
+    for (let i = 0; i < 9; i++) {
+      obj[`key${i}`] = `val${i}`;
+    }
+    const result = RecallInputSchema.safeParse({ query: 'test', metadata_filter: obj });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject metadata_filter with nested objects', () => {
+    const result = RecallInputSchema.safeParse({
+      query: 'test',
+      metadata_filter: { nested: { inside: 'value' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject metadata_filter with array values', () => {
+    const result = RecallInputSchema.safeParse({
+      query: 'test',
+      metadata_filter: { list: [1, 2, 3] },
+    });
     expect(result.success).toBe(false);
   });
 });

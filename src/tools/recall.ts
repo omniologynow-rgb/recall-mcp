@@ -22,15 +22,28 @@ export class RecallTool {
         query: string,
         namespace: string = 'default',
         limit: number = 10,
-        minSimilarity: number = 0.7
+        minSimilarity: number = 0.7,
+        metadataFilter?: Record<string, unknown>,
     ): Promise<RecallResult[]> {
         // Generate embedding for the query
         const embedding = await this.embedder.embed(query);
         const embeddingSql = toSql(embedding.vector);
 
         const results = await this.db.withUserContext(userId, async (client) => {
-            // Cosine similarity: 1 - (embedding <=> memories.embedding)
-            // Ensure similarity >= minSimilarity
+            // Build metadata filter clause (jsonb containment: metadata @> $filter::jsonb)
+            // Empty / undefined filter → no SQL added
+            const metaFilterJson = (metadataFilter && Object.keys(metadataFilter).length > 0)
+                ? JSON.stringify(metadataFilter)
+                : null;
+            const metaClause = metaFilterJson
+                ? ` AND metadata @> $6::jsonb`
+                : '';
+
+            const params: any[] = [embeddingSql, userId, namespace, minSimilarity, limit];
+            if (metaFilterJson) {
+                params.push(metaFilterJson);
+            }
+
             const res = await client.query<{
                 id: string;
                 content: string;
@@ -50,9 +63,10 @@ export class RecallTool {
                  WHERE user_id = $2
                    AND namespace = $3
                    AND 1 - (embedding <=> $1::vector) >= $4
+                   ${metaClause}
                  ORDER BY similarity DESC
                  LIMIT $5`,
-                [embeddingSql, userId, namespace, minSimilarity, limit]
+                params
             );
             // Record usage event
             await client.query(

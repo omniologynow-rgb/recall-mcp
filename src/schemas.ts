@@ -33,6 +33,35 @@ export const RememberInputSchema = z.object({
     metadata: MetadataSchema.optional().describe('Optional metadata'),
 });
 
+/**
+ * Metadata filter for recall: equality match against top-level metadata keys,
+ * AND across keys. Values must be primitives (string | number | boolean).
+ * Max 8 keys (DoS guard). Empty filter is valid and equivalent to omitting.
+ * Applied at the SQL level via metadata @> $filter::jsonb containment.
+ */
+export const MetadataFilterSchema = z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+    .superRefine((val, ctx) => {
+        const keys = Object.keys(val);
+        if (keys.length > 8) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Metadata filter must not exceed 8 keys (got ${keys.length})`,
+            });
+        }
+        // Check for nested objects or arrays (should be caught by z.union type, but
+        // z.record with union accepts them at runtime — so we validate explicitly)
+        for (const [key, value] of Object.entries(val)) {
+            if (value !== null && typeof value === 'object') {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: `Metadata filter value for '${key}' must be a primitive (string, number, boolean), got ${typeof value}`,
+                    path: [key],
+                });
+            }
+        }
+    });
+
 export const RecallInputSchema = z.object({
     query: z
         .string()
@@ -55,6 +84,9 @@ export const RecallInputSchema = z.object({
         .max(1)
         .default(0.7)
         .describe('Minimum similarity threshold 0.0-1.0 (default: 0.7)'),
+    metadata_filter: MetadataFilterSchema
+        .optional()
+        .describe('Filter by metadata key=value pairs (AND semantics, max 8 keys)'),
 });
 
 export const ListMemoriesInputSchema = z.object({

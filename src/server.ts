@@ -123,6 +123,7 @@ export class RecallServer {
             namespace: { type: 'string', description: 'Filter by namespace (default: "default")' },
             limit: { type: 'number', description: 'Maximum results (1-50, default: 10)' },
             threshold: { type: 'number', description: 'Minimum similarity 0.0-1.0 (default: 0.7)' },
+            metadata_filter: { type: 'object', description: 'Filter by metadata key=value pairs (AND semantics, max 8 keys, primitives only)' },
           },
           required: ['query'],
         },
@@ -211,7 +212,7 @@ export class RecallServer {
           }
           case 'recall': {
             const validated = validateArgs(RecallInputSchema, args);
-            const results = await recallTool.recall(auth.userId, validated.query, validated.namespace, validated.limit, validated.threshold);
+            const results = await recallTool.recall(auth.userId, validated.query, validated.namespace, validated.limit, validated.threshold, validated.metadata_filter);
             // Validate raw results, then wrap in <memory> tags for prompt-injection defense
             validateOutput(RecallOutputSchema, results);
             const formatted = RecallTool.formatBatchForRecall(results);
