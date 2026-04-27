@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { DatabaseClient } from '../../src/db/client.js';
 import { MockEmbedder } from '../../src/embedder/mock.js';
@@ -111,7 +111,6 @@ describe('Forget by_query two-step (R5)', () => {
     // ─── Token rejection ──────────────────────────────────────────────────
 
     it('should reject wrong confirmation token', async () => {
-        // Use 'JavaScript' — won't be affected by happy path deletion
         await expect(
             forgetTool.forgetByQueryConfirm(userId, crypto.randomBytes(32).toString('hex'))
         ).rejects.toThrowError('Invalid or expired confirmation token');
@@ -134,6 +133,60 @@ describe('Forget by_query two-step (R5)', () => {
         await expect(
             forgetTool.forgetByQueryConfirm(otherUserId, preview.confirmation_token)
         ).rejects.toThrowError('Invalid or expired confirmation token');
+    });
+
+    // ─── Token expiry with fake clock ──────────────────────────────────────
+
+    it('should reject expired confirmation token with distinct error and evict on cleanup', async () => {
+        // Step 1: Preview with real timers — get a token
+        const preview = await forgetTool.forgetByQueryPreview(userId, 'Python', 'work', 0.0, 10);
+        expect(preview.matches.length).toBeGreaterThanOrEqual(1);
+        expect(preview.confirmation_token).toBeTruthy();
+
+        // Step 2: Install fake timers set to just past 5 minutes from now
+        // The token's expiresAt was set during preview: Date.now() + 300000.
+        // Since preview completed successfully, expiresAt < Date.now() + 300000 + some small delta.
+        // We advance the fake clock past that expiry point without letting the
+        // 60s cleanup interval catch up on the same tick.
+        //
+        // Cleanup fires every 60s from the interval's schedule. By offsetting
+        // the fake clock's base (now - 1) and advancing by 300001, the clock
+        // reaches Date.now() + 300000, but the cleanup interval doesn't fire
+        // at exactly this offset. We get to the confirm call before cleanup evicts.
+        const now = Date.now();
+        vi.useFakeTimers({ now: now - 1 });
+        vi.advanceTimersByTime(300001);
+        // Clock is now at: now - 1 + 300001 = now + 300000
+        // This is 300001ms from start, cleanup fires at +60000, +120000, ..., +300000
+        // At +300000: Date.now() = now + 299999 (since base is now - 1)
+        // expiresAt ≈ (now - epsilon) + 300000 ≈ now + 300000 - epsilon
+        // Cleanup checks: expiresAt <= Date.now() → (now + 300000 - epsilon) <= (now + 299999)
+        // This is false for any positive epsilon → token NOT evicted by cleanup
+        //
+        // Now the forgerByQueryConfirm check:
+        // pending.expiresAt <= Date.now() → (now + 300000 - epsilon) <= (now + 300000)
+        // This is true for any non-negative epsilon → token IS expired
+
+        await expect(
+            forgetTool.forgetByQueryConfirm(userId, preview.confirmation_token)
+        ).rejects.toThrowError('Confirmation token has expired');
+
+        // Step 3: Advance clock past next cleanup boundary (now + 360000)
+        // We go from now + 300000 to now + 360000 (adds 60000ms)
+        // This fires the cleanup at +360000 from base (first +360000 tick since the interval
+        // already fired at +300000, next is at +360000)
+        // At cleanup +360000: Date.now() = now - 1 + 360000 = now + 359999
+        // expiresAt ≈ now + 300000 - epsilon
+        // Cleanup checks: expiresAt <= Date.now() → now + 300000 - epsilon <= now + 359999
+        // This is true → cleanup evicts the entry
+        vi.advanceTimersByTime(60000);
+
+        // Now the token should be gone from the Map entirely
+        await expect(
+            forgetTool.forgetByQueryConfirm(userId, preview.confirmation_token)
+        ).rejects.toThrowError('Invalid or expired confirmation token');
+
+        vi.useRealTimers();
     });
 
     // ─── Happy path (last — deletes data) ────────────────────────────────
