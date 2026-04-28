@@ -25,6 +25,7 @@ import {
   UpdateMemoryOutputSchema, ForgetOutputSchema,
 } from './schemas.js';
 import pino from 'pino';
+import { rootLogger, createToolLogger, redactSensitive } from './logging.js';
 
 export interface ServerOptions {
   port?: number | undefined;
@@ -55,13 +56,7 @@ export class RecallServer {
     private options: ServerOptions = {}
   ) {
     const config = getConfig();
-    const loggerOptions: pino.LoggerOptions = {
-      level: config.logLevel,
-    };
-    if (config.isDev) {
-      loggerOptions.transport = { target: 'pino-pretty' };
-    }
-    this.logger = pino(loggerOptions);
+    this.logger = rootLogger.child({ name: 'RecallServer' });
     this.version = this.loadVersion();
     this.fastify = fastify({
       logger: false,
@@ -178,6 +173,33 @@ export class RecallServer {
       tools,
     }));
 
+    // Helper to wrap a tool handler with request-scoped logging
+    const handleToolWithLogging = (
+      toolName: string,
+      handler: () => Promise<{ content: Array<{ type: string; text: string }> }>,
+    ): Promise<{ content: Array<{ type: string; text: string }> }> => {
+      const auth = authContext.getStore();
+      if (!auth) {
+        return Promise.resolve({ content: [{ type: 'text', text: JSON.stringify({ error: { code: 'unauthorized', message: 'Authentication required', retryable: false } }) }] });
+      }
+      const reqLogger = createToolLogger(auth.requestId, toolName, auth.userId);
+      const start = Date.now();
+      reqLogger.info('Handling tool call');
+      return handler().then((result) => {
+        const elapsed = Date.now() - start;
+        reqLogger.info({ elapsed_ms: elapsed }, 'Tool call completed');
+        return result;
+      }).catch((err: unknown) => {
+        const elapsed = Date.now() - start;
+        const errInfo = err instanceof Error ? { message: err.message, name: err.name } : { message: String(err) };
+        reqLogger.error({ elapsed_ms: elapsed, ...redactSensitive(errInfo) }, 'Tool call failed');
+        const errMsg = err instanceof Error && (err as any).toMcpError
+          ? JSON.stringify((err as any).toMcpError())
+          : JSON.stringify({ error: { code: 'internal_error', message: err instanceof Error ? err.message : 'Unknown error', retryable: false } });
+        return { content: [{ type: 'text', text: errMsg }] };
+      });
+    };
+
     // Register tool handlers with Zod validation, auth context, and error wrapping
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
@@ -191,58 +213,48 @@ export class RecallServer {
         return { content: [{ type: 'text', text: JSON.stringify({ error: { code: 'unauthorized', message: 'Authentication required', retryable: false } }) }] };
       }
 
-      // Helper: wrap any error into the { error: { code, message } } shape
-      // inside the result content (not thrown as a JSON-RPC exception).
-      // ToolErrors get their structured shape; unexpected errors get a generic internal_error.
-      const serializeError = (err: unknown): string => {
-        if (err instanceof Error && (err as any).toMcpError) {
-          return JSON.stringify((err as any).toMcpError());
-        }
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        return JSON.stringify({ error: { code: 'internal_error', message, retryable: false } });
-      };
-
-      try {
-        switch (name) {
-          case 'remember': {
+      switch (name) {
+        case 'remember':
+          return handleToolWithLogging('remember', async () => {
             const validated = validateArgs(RememberInputSchema, args);
             const id = await rememberTool.remember(auth.userId, auth.tier, validated.content, validated.namespace, validated.metadata);
             const output = validateOutput(RememberOutputSchema, { id });
             return { content: [{ type: 'text', text: JSON.stringify(output) }] };
-          }
-          case 'recall': {
+          });
+        case 'recall':
+          return handleToolWithLogging('recall', async () => {
             const validated = validateArgs(RecallInputSchema, args);
             const results = await recallTool.recall(auth.userId, validated.query, validated.namespace, validated.limit, validated.threshold, validated.metadata_filter);
-            // Validate raw results, then wrap in <memory> tags for prompt-injection defense
             validateOutput(RecallOutputSchema, results);
             const formatted = RecallTool.formatBatchForRecall(results);
             return { content: [{ type: 'text', text: formatted }] };
-          }
-          case 'list_memories': {
+          });
+        case 'list_memories':
+          return handleToolWithLogging('list_memories', async () => {
             const validated = validateArgs(ListMemoriesInputSchema, args);
             const results = await listTool.list(auth.userId, validated.namespace, validated.limit, validated.offset, validated.order);
             const output = validateOutput(ListMemoriesOutputSchema, results);
             return { content: [{ type: 'text', text: JSON.stringify(output) }] };
-          }
-          case 'update_memory': {
+          });
+        case 'update_memory':
+          return handleToolWithLogging('update_memory', async () => {
             const validated = validateArgs(UpdateMemoryInputSchema, args);
             const success = await updateTool.update(auth.userId, validated.id, validated.content, validated.metadata);
             const output = validateOutput(UpdateMemoryOutputSchema, { success });
             return { content: [{ type: 'text', text: JSON.stringify(output) }] };
-          }
-          case 'forget': {
+          });
+        case 'forget':
+          return handleToolWithLogging('forget', async () => {
             const validated = validateArgs(ForgetInputSchema, args);
             if (validated.mode === 'by_id') {
               const success = await forgetTool.forget(auth.userId, validated.id);
               const output = validateOutput(ForgetOutputSchema, { success });
               return { content: [{ type: 'text', text: JSON.stringify(output) }] };
             } else if ('confirmation_token' in validated) {
-              // by_query confirm step
               const result = await forgetTool.forgetByQueryConfirm(auth.userId, validated.confirmation_token);
               const output = validateOutput(ForgetOutputSchema, result);
               return { content: [{ type: 'text', text: JSON.stringify(output) }] };
             } else {
-              // by_query preview step
               const result = await forgetTool.forgetByQueryPreview(
                 auth.userId, validated.query, validated.namespace,
                 validated.threshold, validated.limit,
@@ -250,12 +262,9 @@ export class RecallServer {
               const output = validateOutput(ForgetOutputSchema, result);
               return { content: [{ type: 'text', text: JSON.stringify(output) }] };
             }
-          }
-          default:
-            return { content: [{ type: 'text', text: JSON.stringify({ error: { code: 'unknown_tool', message: `Unknown tool: ${name}`, retryable: false } }) }] };
-        }
-      } catch (err) {
-        return { content: [{ type: 'text', text: serializeError(err) }] };
+          });
+        default:
+          return { content: [{ type: 'text', text: JSON.stringify({ error: { code: 'unknown_tool', message: `Unknown tool: ${name}`, retryable: false } }) }] };
       }
     });
 
@@ -412,7 +421,9 @@ export class RecallServer {
       reply.hijack();
       // Wrap transport in auth context so MCP tool handlers can read userId/tier
       // from AsyncLocalStorage instead of receiving them in tool arguments
-      await authContext.run({ userId: auth.userId, tier: auth.tier || 'free' }, async () => {
+      const requestId = String(request.id || 'unknown');
+      (request.raw as any).auth.requestId = requestId;
+      await authContext.run({ userId: auth.userId, tier: auth.tier || 'free', requestId }, async () => {
         await (transport as StreamableHTTPServerTransport).handleRequest(request.raw, reply.raw, request.body);
       });
     });

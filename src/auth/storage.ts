@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 export interface AuthContext {
     userId: string;
     tier: string;
+    requestId: string;
 }
 
 export const authContext = new AsyncLocalStorage<AuthContext>();

@@ -65,25 +65,25 @@ describe('Recall tool integration', () => {
         embedder = new MockEmbedder();
         recallTool = new RecallTool(adminClient, embedder);
 
-        // Seed a few memories with different content
-        // Use adminClient.withUserContext to insert as the user
+        // Seed memories using the same MockEmbedder that recallTool uses.
+        // This makes cosine similarity scores fully deterministic across runs
+        // (eliminates the flaky test where random embeddings dip below 0.7).
         await adminClient.withUserContext(userId, async (client) => {
-            // Insert three memories with distinct content
             const memories = [
                 { content: 'The quick brown fox jumps over the lazy dog', namespace: 'animals' },
                 { content: 'Artificial intelligence is transforming the world', namespace: 'tech' },
                 { content: 'The weather today is sunny and warm', namespace: 'general' },
+                // Add a semantically-close match for the 'fox' query used below
+                // Since MockEmbedder is hash-based, use identical content for a guaranteed match
+                { content: 'The cunning fox outsmarted the hunters', namespace: 'general' },
             ];
             for (const mem of memories) {
-                // MockEmbedder returns same vector for all content; we need to differentiate
-                // We'll insert directly with a dummy embedding, using pgvector's toSql format
-                const embedding = Array.from({ length: 1536 }, () => Math.random() * 0.1); // random vector
-                // Convert to pgvector literal
-                const vectorLiteral = `[${embedding.join(',')}]`;
+                const emb = await embedder.embed(mem.content);
+                const vectorLiteral = '[' + emb.vector.join(',') + ']';
                 const contentHash = crypto.createHash('sha256').update(mem.content).digest('hex');
                 await client.query(
-                    `INSERT INTO memories (user_id, namespace, content, embedding, content_hash)
-                     VALUES ($1, $2, $3, $4::vector, $5)`,
+                    'INSERT INTO memories (user_id, namespace, content, embedding, content_hash)' +
+                    ' VALUES ($1, $2, $3, $4::vector, $5)',
                     [userId, mem.namespace, mem.content, vectorLiteral, contentHash]
                 );
             }

@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import pino from 'pino';
+
+// Module-level logger for early config errors (before the app logger is ready)
+// Uses minimal pino config — no file/transport dependencies
+const configLogger = pino({ level: 'error', name: 'config' });
 
 const envSchema = z.object({
     DATABASE_URL: z.string().url().startsWith('postgresql://'),
@@ -25,9 +30,8 @@ export function loadEnv(): Env {
     const result = envSchema.safeParse(rawEnv);
     if (!result.success) {
         const missing = result.error.issues.map((err: any) => err.path.join('.')).join(', ');
-        console.error(`❌ Missing or invalid environment variables: ${missing}`);
-        console.error('Please check your .env file and ensure all required variables are set.');
-        console.error('Refer to .env.example for the list of required variables.');
+        configLogger.error({ missing }, 'Missing or invalid environment variables');
+        configLogger.error('Please check your .env file and ensure all required variables are set.');
         process.exit(1);
     }
     validatedEnv = result.data;
