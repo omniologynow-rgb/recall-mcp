@@ -31,6 +31,8 @@ export class RecallTool {
 
         const results = await this.db.withUserContext(userId, async (client) => {
             // Build metadata filter clause (jsonb containment: metadata @> $filter::jsonb)
+            // R7 production hardening: add GIN index on memories.metadata for performance.
+            //   CREATE INDEX idx_memories_metadata_gin ON memories USING GIN (metadata);
             // Empty / undefined filter → no SQL added
             const metaFilterJson = (metadataFilter && Object.keys(metadataFilter).length > 0)
                 ? JSON.stringify(metadataFilter)

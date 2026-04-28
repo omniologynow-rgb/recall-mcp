@@ -104,11 +104,49 @@ describe('Recall with metadata_filter integration (R6)', () => {
                 );
             }
         });
+
+        // Seed todo items with embeddings computed by the same MockEmbedder
+        // Used for ordered ranking test — identical text = identical MockEmbedder hash
+        await adminClient.withUserContext(userId, async (client) => {
+            const todoItems = [
+                { content: 'Buy groceries and milk', ns: 'personal' },
+                { content: 'Fix the leaking kitchen faucet', ns: 'personal' },
+                { content: 'Schedule dentist appointment for next month', ns: 'personal' },
+                { content: 'Research AI frameworks for the new project', ns: 'personal' },
+                { content: 'Review quarterly financial reports', ns: 'personal' },
+            ];
+            for (const item of todoItems) {
+                const emb = await embedder.embed(item.content);
+                const vec = '[' + emb.vector.join(',') + ']';
+                const hash = crypto.createHash('sha256').update(item.content).digest('hex');
+                await client.query(
+                    'INSERT INTO memories (user_id, namespace, content, embedding, content_hash, metadata) VALUES ($1, $2, $3, $4::vector, $5, $6::jsonb)',
+                    [userId, item.ns, item.content, vec, hash, JSON.stringify({ tag: 'todo' })]
+                );
+            }
+        });
     });
 
     afterAll(async () => {
         await adminClient?.close();
         await container?.stop();
+    });
+
+    // ─── Ordered ranking within filtered subset ──────────────────────────
+
+    it('should return results in decreasing similarity order within filtered subset', async () => {
+        // 5 memories with {tag: "todo"} seeded above, all in "personal" namespace.
+        // Query for "Buy groceries and milk" which has identical MockEmbedder embedding
+        // to the first todo item, so it should rank first with similarity 1.0.
+        const results = await recallTool.recall(userId, 'Buy groceries and milk', 'personal', 10, 0.0, { tag: 'todo' });
+        expect(results.length).toBeGreaterThanOrEqual(5);
+        // First result should be the exact match (identical content = identical MockEmbedder hash)
+        expect(results[0].content).toBe('Buy groceries and milk');
+        expect(results[0].similarity).toBe(1.0);
+        // Remaining results should be ordered by decreasing similarity
+        for (let i = 1; i < results.length; i++) {
+            expect(results[i].similarity).toBeLessThanOrEqual(results[i - 1].similarity);
+        }
     });
 
     // ─── Matched subset─────────────────────────────────────────────────────
