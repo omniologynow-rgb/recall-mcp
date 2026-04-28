@@ -26,6 +26,7 @@ import {
 } from './schemas.js';
 import pino from 'pino';
 import { rootLogger, createToolLogger, redactSensitive } from './logging.js';
+import { InMemoryRateLimiter } from './ratelimit/in-memory.js';
 
 export interface ServerOptions {
   port?: number | undefined;
@@ -50,6 +51,7 @@ export class RecallServer {
   private logger: pino.Logger;
   private version: string;
   private isShuttingDown = false;
+  private rateLimiter: InMemoryRateLimiter;
 
   constructor(
     private embedder: Embedder,
@@ -65,6 +67,7 @@ export class RecallServer {
     this.db = new DatabaseClient(config.databaseUrl);
     this.auth = new AuthService(this.db);
     this.health = new HealthService(this.db, embedder, this.version);
+    this.rateLimiter = new InMemoryRateLimiter();
     this.mcpServer = this.createMcpServer();
     // Routes will be set up in start() based on transport type
     this.setupGracefulShutdown();
@@ -387,7 +390,7 @@ export class RecallServer {
       const apiKey = authHeader.slice('Bearer '.length);
       try {
         const authResult = await this.auth.authenticate(apiKey);
-        (request.raw as any).auth = { userId: authResult.userId, tier: authResult.tier };
+        (request.raw as any).auth = { userId: authResult.userId, tier: authResult.tier, keyId: authResult.keyId };
         done();
       } catch {
         // Do not leak whether the key existed
@@ -409,6 +412,26 @@ export class RecallServer {
         reply.code(401).send({ error: 'Unauthorized' });
         return;
       }
+
+      // Rate limit check: enforce per-API-key token bucket
+      const tier = auth.tier || 'free';
+      const { allowed, retryAfter } = await this.rateLimiter.check(auth.keyId, tier);
+      const rateMeta = this.rateLimiter.lastDecisionMeta();
+      if (!allowed) {
+        reply.header('Retry-After', String(retryAfter));
+        reply.code(429).send({ error: 'Too Many Requests', retry_after: retryAfter });
+        this.logger.info({
+          event: 'rate_limit_exceeded',
+          user_id: auth.userId,
+          ...rateMeta,
+        }, 'Rate limit exceeded');
+        return;
+      }
+      this.logger.debug({
+        event: 'rate_limit_allowed',
+        user_id: auth.userId,
+        ...rateMeta,
+      }, 'Rate limit allowed');
 
       // Handle MCP request via transport
       const transport = this.transport;

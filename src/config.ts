@@ -50,6 +50,18 @@ export function resetEnvCache(): void {
 }
 
 // Convenience config object (lazy)
+export interface TierRateLimitConfig {
+    capacity: number;
+    refillRate: number;
+}
+
+export const TIER_RATE_LIMITS: Record<string, TierRateLimitConfig> = {
+    free:    { capacity: 10,  refillRate: 10 / 60 },
+    starter: { capacity: 60,  refillRate: 60 / 60 },
+    pro:     { capacity: 60,  refillRate: 60 / 60 },
+    team:    { capacity: 60,  refillRate: 60 / 60 },
+};
+
 export function getConfig() {
     const env = loadEnv();
     return {
@@ -57,5 +69,6 @@ export function getConfig() {
         openaiApiKey: env.OPENAI_API_KEY,
         logLevel: env.LOG_LEVEL,
         isDev: env.NODE_ENV === 'development' || env.NODE_ENV === 'test',
+        tierRateLimits: TIER_RATE_LIMITS,
     };
 }

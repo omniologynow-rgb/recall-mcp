@@ -69,9 +69,10 @@ export class AuthService {
       user_id: string;
       key_hash: string;
       key_prefix: string;
+      tier: string;
       revoked_at: Date | null;
     }>(
-      `SELECT id, user_id, key_hash, key_prefix, revoked_at
+      `SELECT id, user_id, key_hash, key_prefix, tier, revoked_at
        FROM api_keys
        WHERE key_prefix = $1`,
       [keyPrefix]
@@ -102,7 +103,10 @@ export class AuthService {
       throw new Error('unauthorized');
     }
     const user = userRes.rows[0];
-    const result: AuthResult = { userId: user.id, tier: user.tier, keyId: keyRow.id };
+    // Tier comes from the API key's tier column (migration 0004),
+    // falling back to the user's tier if not set (legacy keys)
+    const effectiveTier = keyRow.tier || user.tier || 'free';
+    const result: AuthResult = { userId: user.id, tier: effectiveTier, keyId: keyRow.id };
     // Cache the result
     this.cache.set(keyPrefix, result);
     // Fire‑and‑forget update of last_used_at
