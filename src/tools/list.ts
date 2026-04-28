@@ -36,11 +36,6 @@ export class ListMemoriesTool {
                  LIMIT $3 OFFSET $4`,
                 [userId, namespace, limit, offset]
             );
-            // Record usage event
-            await client.query(
-                `INSERT INTO usage_events (user_id, event_type, metadata) VALUES ($1, 'list', '{}')`,
-                [userId]
-            );
             return res.rows;
         });
         return results;

@@ -68,11 +68,6 @@ export class ForgetTool {
             if (deleteRes.rows.length === 0) {
                 throw ToolError.notFound('Memory not found');
             }
-            // Record usage event
-            await client.query(
-                `INSERT INTO usage_events (user_id, event_type, metadata) VALUES ($1, 'forget', '{}')`,
-                [userId]
-            );
             return true;
         });
         return deleted;
@@ -166,11 +161,6 @@ export class ForgetTool {
             );
             const deletedCount = res.rows.length;
 
-            // Record usage event
-            await client.query(
-                `INSERT INTO usage_events (user_id, event_type, metadata) VALUES ($1, 'forget', '{}')`,
-                [userId]
-            );
             return deletedCount;
         });
 

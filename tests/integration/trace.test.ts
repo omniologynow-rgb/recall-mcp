@@ -110,26 +110,9 @@ describe('End-to-end trace', () => {
         console.log(`   created_at: ${memoryRow.created_at}`);
         console.log(`   updated_at: ${memoryRow.updated_at}`);
 
-        // Query usage_events and paste the row.
-        const usageRow = await adminClient.withUserContext(userId, async (client) => {
-            const res = await client.query<{
-                id: string;
-                user_id: string;
-                event_type: string;
-                metadata: any;
-                created_at: string;
-            }>(
-                `SELECT id, user_id, event_type, metadata, created_at FROM usage_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
-                [userId]
-            );
-            return res.rows[0];
-        });
-        console.log('\n📊 Usage event row:');
-        console.log(`   id: ${usageRow.id}`);
-        console.log(`   user_id: ${usageRow.user_id}`);
-        console.log(`   event_type: ${usageRow.event_type}`);
-        console.log(`   metadata: ${JSON.stringify(usageRow.metadata)}`);
-        console.log(`   created_at: ${usageRow.created_at}`);
+        // Note: usage events are recorded at the server level (handleToolWithLogging wrapper),
+        // not in the tool methods themselves. The trace test calls tools directly, so
+        // no usage events are expected here. See tests/integration/usage-events.test.ts for server-level testing.
 
         // Call remember() again with the SAME content+namespace.
         console.log('\n📝 Calling remember again with identical content and namespace...');

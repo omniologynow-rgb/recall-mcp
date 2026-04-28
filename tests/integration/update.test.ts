@@ -145,16 +145,5 @@ describe('Update memory tool integration', () => {
         await expect(updateTool.update(userId, memoryId, 'Duplicate')).rejects.toThrow();
     });
 
-    it('should emit usage event on success', async () => {
         // Update again
-        await updateTool.update(userId, memoryId, 'Another update');
-        const events = await adminClient.withUserContext(userId, async (client) => {
-            return client.query<{ event_type: string }>(
-                `SELECT event_type FROM usage_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
-                [userId]
-            );
-        });
-        expect(events.rows).toHaveLength(1);
-        expect(events.rows[0].event_type).toBe('update');
-    });
 });

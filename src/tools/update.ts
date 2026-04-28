@@ -68,11 +68,6 @@ export class UpdateMemoryTool {
                 }
             }
 
-            // Record usage event
-            await client.query(
-                `INSERT INTO usage_events (user_id, event_type, metadata) VALUES ($1, 'update', '{}')`,
-                [userId]
-            );
             return true;
         });
         return updated;

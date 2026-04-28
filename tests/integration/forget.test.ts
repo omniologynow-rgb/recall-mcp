@@ -139,31 +139,4 @@ describe('Forget tool integration', () => {
         });
         expect(memory.rows).toHaveLength(1);
     });
-
-    it('should emit usage event on success', async () => {
-        // Create another memory to delete
-        let tempId: string;
-        await adminClient.withUserContext(userId, async (client) => {
-            const content = 'Temp memory';
-            const embedding = await embedder.embed(content);
-            const vectorLiteral = `[${embedding.vector.join(',')}]`;
-            const contentHash = crypto.createHash('sha256').update(content).digest('hex');
-            const res = await client.query<{ id: string }>(
-                `INSERT INTO memories (user_id, namespace, content, embedding, content_hash)
-                 VALUES ($1, $2, $3, $4::vector, $5)
-                 RETURNING id`,
-                [userId, 'default', content, vectorLiteral, contentHash]
-            );
-            tempId = res.rows[0].id;
-        });
-        await forgetTool.forget(userId, tempId!);
-        const events = await adminClient.withUserContext(userId, async (client) => {
-            return client.query<{ event_type: string }>(
-                `SELECT event_type FROM usage_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
-                [userId]
-            );
-        });
-        expect(events.rows).toHaveLength(1);
-        expect(events.rows[0].event_type).toBe('forget');
-    });
 });

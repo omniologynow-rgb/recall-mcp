@@ -4,6 +4,7 @@ export interface AuthContext {
     userId: string;
     tier: string;
     requestId: string;
+    apiKeyId: string;
 }
 
 export const authContext = new AsyncLocalStorage<AuthContext>();

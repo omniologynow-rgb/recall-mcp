@@ -124,15 +124,4 @@ describe('List memories tool integration', () => {
         expect(ids1.some(id => ids2.includes(id))).toBe(false);
     });
 
-    it('should emit usage event', async () => {
-        await listTool.list(userId, 'default');
-        const events = await adminClient.withUserContext(userId, async (client) => {
-            return client.query<{ event_type: string }>(
-                `SELECT event_type FROM usage_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
-                [userId]
-            );
-        });
-        expect(events.rows).toHaveLength(1);
-        expect(events.rows[0].event_type).toBe('list');
-    });
 });

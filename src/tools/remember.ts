@@ -22,11 +22,6 @@ export class RememberTool {
                 [userId, namespace, contentHash]
             );
             if (duplicateRes.rows.length > 0) {
-                // Record dedupe event
-                await client.query(
-                    `INSERT INTO usage_events (user_id, event_type, metadata) VALUES ($1, 'remember_dedupe', '{}')`,
-                    [userId]
-                );
                 return { id: duplicateRes.rows[0].id, deduped: true };
             }
             // 2. Tier enforcement (only for free tier)
@@ -51,11 +46,6 @@ export class RememberTool {
                  VALUES ($1, $2, $3, $4, $5, $6)
                  RETURNING id`,
                 [userId, namespace, normalized, metadata ? JSON.stringify(metadata) : '{}', toSql(embedding.vector), contentHash]
-            );
-            // 5. Record usage event
-            await client.query(
-                `INSERT INTO usage_events (user_id, event_type, metadata) VALUES ($1, 'remember', '{}')`,
-                [userId]
             );
             return { id: insertRes.rows[0].id, deduped: false };
         });

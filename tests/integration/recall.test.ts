@@ -136,15 +136,4 @@ describe('Recall tool integration', () => {
         expect(results.length).toBeLessThanOrEqual(1);
     });
 
-    it('should emit usage event on success', async () => {
-        await recallTool.recall(userId, 'test query');
-        const events = await adminClient.withUserContext(userId, async (client) => {
-            return client.query<{ event_type: string }>(
-                `SELECT event_type FROM usage_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
-                [userId]
-            );
-        });
-        expect(events.rows).toHaveLength(1);
-        expect(events.rows[0].event_type).toBe('recall');
-    });
 });

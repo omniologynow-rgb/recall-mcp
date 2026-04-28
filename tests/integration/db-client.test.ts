@@ -158,8 +158,8 @@ describe('DatabaseClient with RLS', () => {
     async function seedUsageEventFor(userId: string, eventType = 'remember'): Promise<string> {
         const result = await dbClient.withUserContext(userId, async (client) => {
             const res = await client.query<{ id: string }>(
-                `INSERT INTO usage_events (user_id, event_type, metadata)
-                 VALUES ($1, $2, '{}') RETURNING id`,
+                `INSERT INTO usage_events (user_id, api_key_id, request_id, tool_name, tokens_consumed, latency_ms, success, error_code)
+                 VALUES ($1, (SELECT id FROM api_keys WHERE user_id = $1 LIMIT 1), 'test-request', $2, 1, 0, true, NULL) RETURNING id`,
                 [userId, eventType]
             );
             return res.rows[0].id;
@@ -349,7 +349,7 @@ describe('DatabaseClient with RLS', () => {
 
             // 2) UPDATE: owner must not be able to modify userB's rows
             const updateRes = await client.query(
-                `UPDATE usage_events SET event_type = 'hijacked' WHERE user_id = $1`,
+                `UPDATE usage_events SET success = false WHERE user_id = $1`,
                 [userBId]
             );
             expect(updateRes.rowCount).toBe(0);
@@ -357,9 +357,9 @@ describe('DatabaseClient with RLS', () => {
             // 3) INSERT with a foreign user_id must fail WITH CHECK (aborts transaction)
             await expect(
                 client.query(
-                    `INSERT INTO usage_events (user_id, event_type, metadata)
-                     VALUES ($1, $2, '{}')`,
-                    [userBId, 'x']
+                    `INSERT INTO usage_events (user_id, api_key_id, request_id, tool_name, tokens_consumed, latency_ms, success, error_code)
+                     VALUES ($1, (SELECT id FROM api_keys WHERE user_id = $1 LIMIT 1), 'test', 'remember', 1, 0, true, NULL)`,
+                    [userBId]
                 )
             ).rejects.toThrow();
 

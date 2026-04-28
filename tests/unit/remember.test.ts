@@ -179,7 +179,6 @@ describe('RememberTool', () => {
             // Verify duplicate check query was called
             expect(queries).toEqual([
                 expect.stringContaining('SELECT id FROM memories'),
-                expect.stringContaining('INSERT INTO usage_events'),
             ]);
             // Embedder should NOT be called
             expect(mockEmbedder.embed).not.toHaveBeenCalled();

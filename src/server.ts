@@ -27,6 +27,7 @@ import {
 import pino from 'pino';
 import { rootLogger, createToolLogger, redactSensitive } from './logging.js';
 import { InMemoryRateLimiter } from './ratelimit/in-memory.js';
+import { recordUsageEvent } from './db/usage.js';
 
 export interface ServerOptions {
   port?: number | undefined;
@@ -176,7 +177,7 @@ export class RecallServer {
       tools,
     }));
 
-    // Helper to wrap a tool handler with request-scoped logging
+    // Helper to wrap a tool handler with request-scoped logging and usage event recording
     const handleToolWithLogging = (
       toolName: string,
       handler: () => Promise<{ content: Array<{ type: string; text: string }> }>,
@@ -188,19 +189,61 @@ export class RecallServer {
       const reqLogger = createToolLogger(auth.requestId, toolName, auth.userId);
       const start = Date.now();
       reqLogger.info('Handling tool call');
-      return handler().then((result) => {
+
+      // Determine error code string from error object
+      const errorCodeFrom = (err: unknown): string | null => {
+        if (err instanceof Error && (err as any).toMcpError) {
+          const mcpErr = (err as any).toMcpError();
+          return mcpErr.code || 'internal_error';
+        }
+        if (err instanceof Error && err.name === 'ValidationError') {
+          return 'validation_failed';
+        }
+        return 'internal_error';
+      };
+
+      const resultPromise = handler().then((result) => {
         const elapsed = Date.now() - start;
         reqLogger.info({ elapsed_ms: elapsed }, 'Tool call completed');
+        // Fire-and-forget: record SUCCESS usage event
+        recordUsageEvent(this.db, {
+          userId: auth.userId,
+          apiKeyId: auth.apiKeyId,
+          requestId: auth.requestId,
+          toolName,
+          tokensConsumed: 1,
+          latencyMs: elapsed,
+          success: true,
+          errorCode: null,
+        }, (logErr) => {
+          reqLogger.warn({ error: logErr.message }, 'usage_event_write_failed');
+        });
         return result;
       }).catch((err: unknown) => {
         const elapsed = Date.now() - start;
+        const errorCode = errorCodeFrom(err);
         const errInfo = err instanceof Error ? { message: err.message, name: err.name } : { message: String(err) };
-        reqLogger.error({ elapsed_ms: elapsed, ...redactSensitive(errInfo) }, 'Tool call failed');
+        reqLogger.error({ elapsed_ms: elapsed, error_code: errorCode, ...redactSensitive(errInfo) }, 'Tool call failed');
+        // Fire-and-forget: record FAILURE usage event
+        recordUsageEvent(this.db, {
+          userId: auth.userId,
+          apiKeyId: auth.apiKeyId,
+          requestId: auth.requestId,
+          toolName,
+          tokensConsumed: 1,
+          latencyMs: elapsed,
+          success: false,
+          errorCode,
+        }, (logErr) => {
+          reqLogger.warn({ error: logErr.message }, 'usage_event_write_failed');
+        });
         const errMsg = err instanceof Error && (err as any).toMcpError
           ? JSON.stringify((err as any).toMcpError())
           : JSON.stringify({ error: { code: 'internal_error', message: err instanceof Error ? err.message : 'Unknown error', retryable: false } });
         return { content: [{ type: 'text', text: errMsg }] };
       });
+
+      return resultPromise;
     };
 
     // Register tool handlers with Zod validation, auth context, and error wrapping
@@ -425,6 +468,19 @@ export class RecallServer {
           user_id: auth.userId,
           ...rateMeta,
         }, 'Rate limit exceeded');
+        // Fire-and-forget usage event for rate-limited request
+        recordUsageEvent(this.db, {
+          userId: auth.userId,
+          apiKeyId: auth.keyId,
+          requestId: String(request.id || 'unknown'),
+          toolName: 'unknown',
+          tokensConsumed: 0,
+          latencyMs: 0,
+          success: false,
+          errorCode: 'rate_limited',
+        }, (logErr) => {
+          this.logger.warn({ error: logErr.message }, 'usage_event_write_failed');
+        });
         return;
       }
       this.logger.debug({
@@ -446,7 +502,7 @@ export class RecallServer {
       // from AsyncLocalStorage instead of receiving them in tool arguments
       const requestId = String(request.id || 'unknown');
       (request.raw as any).auth.requestId = requestId;
-      await authContext.run({ userId: auth.userId, tier: auth.tier || 'free', requestId }, async () => {
+      await authContext.run({ userId: auth.userId, tier: auth.tier || 'free', requestId, apiKeyId: auth.keyId }, async () => {
         await (transport as StreamableHTTPServerTransport).handleRequest(request.raw, reply.raw, request.body);
       });
     });

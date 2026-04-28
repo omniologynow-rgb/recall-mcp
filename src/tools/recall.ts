@@ -70,11 +70,6 @@ export class RecallTool {
                  LIMIT $5`,
                 params
             );
-            // Record usage event
-            await client.query(
-                `INSERT INTO usage_events (user_id, event_type, metadata) VALUES ($1, 'recall', '{}')`,
-                [userId]
-            );
             return res.rows;
         });
         return results;

@@ -100,17 +100,5 @@ describe('Tier limit stress test', () => {
         });
         const count = parseInt(countRes.rows[0].count, 10);
         expect(count).toBe(100);
-        // Verify usage events: 100 remember events (successful) + maybe dedupe? none
-        const usageRes = await adminClient.withUserContext(userId, async (client) => {
-            return client.query<{ event_type: string; count: string }>(
-                `SELECT event_type, COUNT(*) FROM usage_events WHERE user_id = $1 GROUP BY event_type`,
-                [userId]
-            );
-        });
-        const rememberEvents = usageRes.rows.find(r => r.event_type === 'remember');
-        expect(rememberEvents?.count).toBe('100');
-        // No dedupe events
-        const dedupeEvents = usageRes.rows.find(r => r.event_type === 'remember_dedupe');
-        expect(dedupeEvents).toBeUndefined();
     }, 30000); // 30 second timeout
 });
