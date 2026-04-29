@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Lint (TypeScript compiler)
+        run: npm run lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Type check
+        run: npm run typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run tests
+        run: npm test
+        env:
+          NODE_ENV: test
+
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: recall_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+      - name: Apply migrations
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -e
+          for f in supabase/migrations/*.sql; do
+            echo "Applying $f..."
+            psql -h localhost -U postgres -d recall_test -f "$f"
+            echo "  ✓ $f applied successfully"
+          done
+      - name: Verify schema integrity
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -e
+          echo "=== Tables ==="
+          psql -h localhost -U postgres -d recall_test -c "\dt"
+          echo "=== Extension ==="
+          psql -h localhost -U postgres -d recall_test -c "SELECT * FROM pg_extension WHERE extname='vector';"
+          echo "=== Memories columns ==="
+          psql -h localhost -U postgres -d recall_test -c "\d memories"
+          echo "=== Usage events columns ==="
+          psql -h localhost -U postgres -d recall_test -c "\d usage_events"
+          echo "=== Indexes ==="
+          psql -h localhost -U postgres -d recall_test -c "\di"
+          echo "=== RLS policies ==="
+          psql -h localhost -U postgres -d recall_test -c "SELECT schemaname, tablename, policyname, permissive, roles, cmd FROM pg_policies;"
+          echo "=== All schema integrity checks passed ==="

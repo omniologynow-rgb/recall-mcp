@@ -3,10 +3,14 @@
 **Persistent semantic memory as an MCP tool for AI agents.**
 
 [![License](https://img.shields.io/badge/license-ISC-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D20.0.0-339933.svg)](#self-hosting-guide)
-[![TypeScript](https://img.shields.io/badge/types-TypeScript-3178C6.svg)](#)
+[![Node](https://img.shields.io/badge/node-%3E%3D20.0.0-339933.svg)](.nvmrc)
+[![TypeScript](https://img.shields.io/badge/types-TypeScript-3178C6.svg)](tsconfig.json)
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF.svg)](.github/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-205%20passing-brightgreen.svg)](#)
 [![MCP](https://img.shields.io/badge/MCP-StreamableHTTP-blueviolet.svg)](#)
+
+> **CI badge:** Once pushed to GitHub, replace the `CI` badge above with:
+> `https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg`
 
 ---
 
