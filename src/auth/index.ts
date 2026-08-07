@@ -116,9 +116,16 @@ export class AuthService {
     return result;
   }
 
-  async generateApiKey(userId: string, label?: string): Promise<{ key: string; keyPrefix: string }> {
+  async generateApiKey(userId: string, fields?: string | { label?: string; tier?: string }): Promise<{ key: string; keyPrefix: string; id: string }> {
     const suffixChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
     const maxAttempts = 5;
+    // Accept both old-style string label and new-style { label, tier } object
+    const label = typeof fields === 'string' ? fields : (fields?.label ?? null);
+    const tier = typeof fields === 'string' ? 'free' : (fields?.tier || 'free');
+    const validTiers = ['free', 'starter', 'pro', 'team'];
+    if (!validTiers.includes(tier)) {
+      throw new Error(`invalid tier "${tier}"; must be one of: ${validTiers.join(', ')}`);
+    }
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       // Generate random suffix
       let suffix = '';
@@ -129,12 +136,13 @@ export class AuthService {
       const keyPrefix = this.extractKeyPrefix(key);
       const hash = await bcrypt.hash(key, 12);
       try {
-        await this.db.query(
-          `INSERT INTO api_keys (user_id, key_hash, key_prefix, label)
-           VALUES ($1, $2, $3, $4)`,
-          [userId, hash, keyPrefix, label || null]
+        const result = await this.db.query<{ id: string }>(
+          `INSERT INTO api_keys (user_id, key_hash, key_prefix, label, tier)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id`,
+          [userId, hash, keyPrefix, label, tier]
         );
-        return { key, keyPrefix };
+        return { key, keyPrefix, id: result.rows[0].id };
       } catch (err: any) {
         if (err.code === '23505') { // unique_violation
           // Duplicate prefix, retry with new suffix

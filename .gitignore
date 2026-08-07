@@ -9,3 +9,7 @@ coverage/
 supabase/.temp
 supabase/.branches
 supabase/.config
+# Agent / dev journal directories (keep private)
+memory/
+.claude-code-memory/
+.aider*

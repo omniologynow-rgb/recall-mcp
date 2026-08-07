@@ -177,7 +177,7 @@ describe('AuthService', () => {
 
   describe('generateApiKey', () => {
     it('generates a key with correct format', async () => {
-      (mockDbClient.query as any).mockResolvedValue({ rows: [] }); // no duplicate
+      (mockDbClient.query as any).mockResolvedValue({ rows: [{ id: 'test-key-id' }] }); // no duplicate
       const result = await authService.generateApiKey(userId, 'test label');
       expect(result.key).toMatch(/^recall_live_[a-zA-Z0-9_-]{32}$/);
       expect(result.keyPrefix).toBe(result.key.slice(0, 16));
@@ -196,7 +196,7 @@ describe('AuthService', () => {
         if (callCount === 1) {
           throw { code: '23505' }; // unique_violation
         }
-        return { rows: [] };
+        return { rows: [{ id: "test-key-id" }] };
       });
       const result = await authService.generateApiKey(userId);
       expect(result.key).toMatch(/^recall_live_[a-zA-Z0-9_-]{32}$/);

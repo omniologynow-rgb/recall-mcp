@@ -28,6 +28,8 @@ import pino from 'pino';
 import { rootLogger, createToolLogger, redactSensitive } from './logging.js';
 import { InMemoryRateLimiter } from './ratelimit/in-memory.js';
 import { recordUsageEvent } from './db/usage.js';
+import { registerApiKeyRoutes } from './routes/api-keys.js';
+import { registerStripeWebhook } from './routes/stripe-webhook.js';
 
 export interface ServerOptions {
   port?: number | undefined;
@@ -318,6 +320,7 @@ export class RecallServer {
   }
 
   private setupRoutes(transportType: 'stdio' | 'http') {
+
     // Only register HTTP routes if transport is HTTP
     if (transportType !== 'http') {
       return;
@@ -507,6 +510,16 @@ export class RecallServer {
       });
     });
 
+    // API key management endpoints
+    registerApiKeyRoutes(this.fastify, this.db, this.auth, this.logger);
+
+    // Stripe webhook (for tier sync)
+    registerStripeWebhook(this.fastify, {
+      db: this.db,
+      logger: this.logger,
+      rawBodyStore,
+    });
+
     // Root redirect to health
     this.fastify.get('/', async (_request, reply) => {
       reply.redirect('/health');
@@ -568,7 +581,7 @@ export class RecallServer {
     this.setupRoutes(this.transportType);
 
     if (this.transportType === 'http') {
-      const port = this.options.port || (process.env.PORT ? parseInt(process.env.PORT, 10) : 8080) || 8080;
+      const port = this.options.port ?? (process.env.PORT ? parseInt(process.env.PORT, 10) : 8080) ?? 8080;
       const host = this.options.host || '0.0.0.0';
       await this.fastify.listen({ port, host });
       this.logger.info(`HTTP server listening on ${host}:${port}`);

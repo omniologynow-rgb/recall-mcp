@@ -66,6 +66,14 @@ export class DatabaseClient {
         }
     }
 
+    /**
+     * Borrow a raw PoolClient for manual transaction management.
+     * Caller MUST release the client via client.release() after use.
+     */
+    async getClient(): Promise<PoolClient> {
+      return this.pool.connect();
+    }
+
     async withUserContext<T>(userId: string, fn: (client: PoolClient) => Promise<T>): Promise<T> {
         // Validate userId is a UUID (format)
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {

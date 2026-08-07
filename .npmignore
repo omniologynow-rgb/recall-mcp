@@ -1,0 +1,12 @@
+tests/
+.github/
+docker-compose.yml
+Dockerfile
+.env.example
+.env
+.eslintrc*
+tsconfig.json
+src/
+*.test.ts
+scripts/
+memory/

@@ -275,6 +275,10 @@ The insert is fire-and-forget — failures are logged as warnings but never surf
 | `PORT` | No | HTTP port (default: 8080) |
 | `TRANSPORT` | No | `"http"` (default) or `"stdio"` |
 | `LOG_LEVEL` | No | Log level: `debug`, `info`, `warn`, `error` (default: `info`) |
+| `MCPIZE_BILLING_WEBHOOK_SECRET` | No | HMAC secret for MCPize billing webhook |
+| `STRIPE_SECRET_KEY` | No | Stripe secret key (webhooks disabled if absent) |
+| `STRIPE_WEBHOOK_SECRET` | No | Stripe webhook signing secret |
+| `STRIPE_PRICE_TO_TIER` | No | JSON mapping: price IDs → tiers, e.g. `{"price_abc":"starter"}` |
 
 ### Run Migrations
 
@@ -347,7 +351,7 @@ npm run dev
 npm test
 ```
 
-The test suite spins up isolated Postgres + pgvector containers via Testcontainers, applies all migrations, and runs 205 integration and unit tests covering every tool, RLS isolation, rate limiting, usage events, and cross-user security boundaries.
+The test suite spins up isolated Postgres + pgvector containers via Testcontainers, applies all migrations, and runs 255 integration and unit tests covering every tool, RLS isolation, rate limiting, usage events, and cross-user security boundaries.
 
 ## Architecture Overview
 
@@ -443,14 +447,14 @@ RecallMCP uses [pino](https://getpino.io/) for structured JSON logging:
 - ✅ Per-API-key token-bucket rate limiting
 - ✅ Structured logging with request correlation and redaction
 - ✅ Usage event tracking (foundation for billing)
-- ✅ 205-test integration+unit suite (Testcontainers)
+- ✅ 255-test integration+unit suite (Testcontainers)
+- ✅ API key self-service issuance and management endpoints (R12)
+- ✅ Stripe webhook integration for tier sync (R13)
+- ✅ Docker and deployment guide (R14–15)
+- ✅ MCP Registry manifest & npm publish prep (R16)
 
 **In development:**
 
-- 🔄 API key self-service issuance and management endpoints (R12)
-- 🔄 Stripe webhook integration for tier sync (R13)
-- 🔄 Docker and deployment guide (R14–15)
-- 🔄 MCP Registry manifest
 - 🔄 Public user dashboard (usage stats, key management)
 
 ## License

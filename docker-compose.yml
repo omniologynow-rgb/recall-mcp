@@ -1,0 +1,40 @@
+# ── RecallMCP — Docker Compose ────────────────────────────────────
+#
+# This compose file is for local development and single-box beta deploys.
+# For real production use managed Postgres (Supabase, Neon, RDS) and
+# deploy the app container behind a real ingress (nginx, Caddy, cloud LB).
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: recallmcp
+      POSTGRES_PASSWORD: recallmcp
+      POSTGRES_DB: recallmcp
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U recallmcp -d recallmcp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+volumes:
+  pgdata:
