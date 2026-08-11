@@ -53,7 +53,7 @@ cp .env.example .env
 docker compose up -d
 
 # 4. Run database migrations
-docker compose exec app node dist/migrate.js
+docker compose exec app npm run migrate
 
 # 5. Create the first admin user
 docker compose exec app \
@@ -73,26 +73,33 @@ Migrations must be applied in order. Each file is in `supabase/migrations/`.
 | File | Description |
 |---|---|
 | `0001_init.sql` | Creates `vector` extension, users, api_keys, memories tables |
-| `0002_usage_events.sql` | Creates usage_events table for telemetry |
-| `0003_trace_sessions.sql` | Creates trace_sessions table for traceability |
-| `0004_repeated_analysis.sql` | Adds repeat-analysis tracking columns |
-| `0005_api_key_tier.sql` | Adds `tier` column to api_keys (per-key overrides) |
-| `0006_tier_limits.sql` | Adds tier_config table for rate-limit parameters |
+| `0002_force_rls_and_app_role.sql` | FORCE row-level security + the app role |
+| `0003_metadata_gin_index.sql` | GIN index on memories.metadata |
+| `0004_api_key_tier.sql` | Adds `tier` column to api_keys (per-key overrides) |
+| `0005_usage_events.sql` | Creates usage_events table for telemetry |
+| `0006_api_key_active_index.sql` | Partial index on active api_keys |
 | `0007_stripe_integration.sql` | Adds `stripe_customer_id` to users + stripe_events table |
 
 > Migration 0007 is required even if you're not using Stripe yet — the
 > column and table sit unused but keep the schema consistent.
 
-To run migrations manually:
+Migrations are plain SQL files — there is no `dist/migrate.js`. Apply them
+with the bundled script (loops the files in order against `DATABASE_URL`):
 
 ```bash
-node dist/migrate.js
+npm run migrate
 ```
 
-Or from inside the container:
+Or without Node, either method from the README:
 
 ```bash
-docker compose exec app node dist/migrate.js
+# Supabase CLI (recommended for managed Postgres):
+supabase db push --db-url "$DATABASE_URL"
+
+# Plain psql:
+for f in supabase/migrations/*.sql; do
+  psql "$DATABASE_URL" -f "$f"
+done
 ```
 
 ---
@@ -229,7 +236,7 @@ managed Postgres. See [fly.io docs](https://fly.io/docs/).
 1. Create a **Web Service** on [Render](https://render.com/)
 2. Point at your GitHub repo
 3. Set build command: `npm ci && npm run build`
-4. Set start command: `node dist/server.js`
+4. Set start command: `node dist/index.js`
 5. Add environment variables: `DATABASE_URL`, `OPENAI_API_KEY`
 6. Optionally add a managed Postgres via Render Dashboard
 
@@ -261,15 +268,13 @@ docker compose up -d
 
 ## Troubleshooting
 
-### "Migration 0007 fails with pg.Client quirk"
+### Migration fails with `type "vector" does not exist`
 
-Migration 0007 uses `pg.Client` style (direct connection, not pool). If
-running migrations via `dist/migrate.js`, ensure `DATABASE_URL` is set and
-the `vector` extension exists. The `registerVectorTypes()` call must happen
-**after** `applyMigrations()` because `0001_init.sql` creates the extension.
-
-**Workaround:** If you get `type "vector" does not exist`, run migrations
-in the correct order: `0001` first (creates extension), then the rest.
+Migrations must run in filename order — `0001_init.sql` creates the
+`vector` extension the later files depend on. `npm run migrate` applies
+them sorted and stops at the first failure, so this only bites when
+applying files by hand out of order. Ensure `DATABASE_URL` is set, run
+`0001` first (creates the extension), then the rest.
 
 ### "Stripe webhook returns 503"
 

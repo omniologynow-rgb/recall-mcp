@@ -25,6 +25,7 @@
     "typecheck": "tsc --noEmit",
     "validate:server-json": "node scripts/validate-server-json.js",
     "admin:create-user": "node dist/admin/create-user.js",
+    "migrate": "node scripts/migrate.mjs",
     "prepublishOnly": "npm run build && npm run validate:server-json"
   },
   "keywords": [
