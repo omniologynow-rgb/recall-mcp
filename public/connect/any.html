@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect Recall to any MCP client</title>
+  <meta name="description" content="The universal Recall config. If it speaks MCP, it speaks Recall — including clients that don't exist yet.">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="/">Recall<span>◆</span></a>
+    <nav>
+      <a href="/signup">Get a key</a>
+      <a href="/connect">Connect</a>
+      <a href="/export">Your data</a>
+      <a href="https://github.com/omniologynow-rgb/recall-mcp">GitHub</a>
+    </nav>
+  </header>
+
+  <h1>Any MCP client</h1>
+  <p class="lede">Recall is a standard MCP server. If your client speaks MCP — today's, tomorrow's, one that doesn't exist yet — it speaks Recall. That's the whole point: your memory should never depend on a client list.</p>
+
+  <h2>The three facts you need</h2>
+  <table>
+    <tr><th>Endpoint</th><td><code class="inline"><span class="js-origin">https://recall-mcp.fly.dev</span>/mcp</code></td></tr>
+    <tr><th>Transport</th><td>MCP Streamable HTTP, stateless (plain JSON responses; no session or SSE required, <code class="inline">initialize</code> optional)</td></tr>
+    <tr><th>Auth</th><td><code class="inline">Authorization: Bearer recall_live_…</code> — or <code class="inline">?key=recall_live_…</code> in the URL for clients with no header field</td></tr>
+  </table>
+
+  <h2>Generic config</h2>
+  <p>Most clients accept some variant of this JSON (field names vary — <code class="inline">url</code> / <code class="inline">serverUrl</code> / <code class="inline">httpUrl</code>):</p>
+  <div class="codeblock"><pre id="cfg">{
+  "mcpServers": {
+    "recall": {
+      "type": "http",
+      "url": "<span class="js-origin">https://recall-mcp.fly.dev</span>/mcp",
+      "headers": { "Authorization": "Bearer recall_live_YOUR_KEY_HERE" }
+    }
+  }
+}</pre><button class="copy" data-copy-target="#cfg">Copy</button></div>
+
+  <h3>Client only takes a URL?</h3>
+  <div class="codeblock"><pre id="urlkey"><span class="js-origin">https://recall-mcp.fly.dev</span>/mcp?key=recall_live_YOUR_KEY_HERE</pre><button class="copy" data-copy-target="#urlkey">Copy</button></div>
+  <p class="muted">Issue a dedicated key for URL-based clients (label it) so you can revoke it independently — <a href="/signup#manage">managing keys</a>.</p>
+
+  <h3>Client only speaks stdio?</h3>
+  <p>Bridge it with <code class="inline">mcp-remote</code>:</p>
+  <div class="codeblock"><pre id="stdio">{
+  "mcpServers": {
+    "recall": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "<span class="js-origin">https://recall-mcp.fly.dev</span>/mcp",
+               "--header", "Authorization: Bearer recall_live_YOUR_KEY_HERE"]
+    }
+  }
+}</pre><button class="copy" data-copy-target="#stdio">Copy</button></div>
+
+  <h2>Prove it with curl</h2>
+  <p>It's just HTTP — no SDK required. List the tools:</p>
+  <div class="codeblock"><pre id="curl1">curl -X POST <span class="js-origin">https://recall-mcp.fly.dev</span>/mcp \
+  -H "Authorization: Bearer recall_live_YOUR_KEY_HERE" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'</pre><button class="copy" data-copy-target="#curl1">Copy</button></div>
+  <p>Store a memory:</p>
+  <div class="codeblock"><pre id="curl2">curl -X POST <span class="js-origin">https://recall-mcp.fly.dev</span>/mcp \
+  -H "Authorization: Bearer recall_live_YOUR_KEY_HERE" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"remember","arguments":{"content":"My dog is named Biscuit."}}}'</pre><button class="copy" data-copy-target="#curl2">Copy</button></div>
+
+  <h2>The five tools</h2>
+  <table>
+    <tr><th><code class="inline">remember</code></th><td>Store a memory (content, optional namespace + metadata). Deduplicates identical content.</td></tr>
+    <tr><th><code class="inline">recall</code></th><td>Semantic search over your memories, ranked by similarity.</td></tr>
+    <tr><th><code class="inline">list_memories</code></th><td>Page through memories, optionally by namespace.</td></tr>
+    <tr><th><code class="inline">update_memory</code></th><td>Edit a memory's content or metadata (re-embeds).</td></tr>
+    <tr><th><code class="inline">forget</code></th><td>Delete by ID, or by query with a two-step preview → confirm.</td></tr>
+  </table>
+
+  <div class="test-box">
+    <h3>The 30-second test</h3>
+    <p>Tell your AI: <code class="inline">Remember that my dog is named Biscuit.</code><br>
+    Start a new session — or a different client entirely. Ask: <code class="inline">What's my dog's name?</code><br>
+    If it says <span class="success">Biscuit</span> — your memory is live everywhere.</p>
+  </div>
+
+  <footer class="site">
+    <p>Your data leaves with you, anytime — <a href="/export">export everything as JSON</a>.</p>
+    <p>Built by the team behind <a href="https://omniology.ai">Omniology</a> · <a href="https://github.com/omniologynow-rgb/recall-mcp">Source on GitHub</a></p>
+  </footer>
+</div>
+<script src="/assets/site.js"></script>
+</body>
+</html>

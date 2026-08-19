@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect Recall to Cursor</title>
+  <meta name="description" content="Give Cursor a persistent, portable memory with one mcp.json entry.">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="/">Recall<span>◆</span></a>
+    <nav>
+      <a href="/signup">Get a key</a>
+      <a href="/connect">Connect</a>
+      <a href="/export">Your data</a>
+      <a href="https://github.com/omniologynow-rgb/recall-mcp">GitHub</a>
+    </nav>
+  </header>
+
+  <h1>Recall + Cursor</h1>
+  <p class="lede">Your preferences, project decisions, and coding conventions — remembered across every Cursor session, and shared with your other AI clients.</p>
+
+  <h2>What you need</h2>
+  <ul>
+    <li>A Recall API key — <a href="/signup">free in 30 seconds</a></li>
+    <li>Cursor (any recent version with MCP support)</li>
+  </ul>
+
+  <h2>Steps</h2>
+  <ol class="steps">
+    <li>Open (or create) <code class="inline">~/.cursor/mcp.json</code> for all projects, or <code class="inline">.cursor/mcp.json</code> in one project.</li>
+    <li>Add the Recall entry:
+      <div class="codeblock"><pre id="cfg">{
+  "mcpServers": {
+    "recall": {
+      "url": "<span class="js-origin">https://recall-mcp.fly.dev</span>/mcp",
+      "headers": { "Authorization": "Bearer recall_live_YOUR_KEY_HERE" }
+    }
+  }
+}</pre><button class="copy" data-copy-target="#cfg">Copy</button></div>
+    </li>
+    <li>Check <b>Cursor Settings → MCP</b> — Recall should show connected with five tools (<code class="inline">remember</code>, <code class="inline">recall</code>, <code class="inline">list_memories</code>, <code class="inline">update_memory</code>, <code class="inline">forget</code>).</li>
+  </ol>
+
+  <h2>Make the memory grow</h2>
+  <p>Add a rule (Cursor Settings → Rules) so memory compounds without effort:</p>
+  <div class="codeblock"><pre id="prompt">As we work, save durable facts, decisions, and my preferences with Recall's remember tool; check recall before asking me things I've told you before.</pre><button class="copy" data-copy-target="#prompt">Copy</button></div>
+
+  <div class="test-box">
+    <h3>The 30-second test</h3>
+    <p>Tell Cursor's agent: <code class="inline">Remember that my dog is named Biscuit.</code><br>
+    Open a new chat — or a different client entirely. Ask: <code class="inline">What's my dog's name?</code><br>
+    If it says <span class="success">Biscuit</span> — your memory is live everywhere.</p>
+  </div>
+
+  <footer class="site">
+    <p>Your data leaves with you, anytime — <a href="/export">export everything as JSON</a>.</p>
+    <p>Built by the team behind <a href="https://omniology.ai">Omniology</a> · <a href="https://github.com/omniologynow-rgb/recall-mcp">Source on GitHub</a></p>
+  </footer>
+</div>
+<script src="/assets/site.js"></script>
+</body>
+</html>

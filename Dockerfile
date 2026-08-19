@@ -32,6 +32,8 @@ WORKDIR /app
 # Copy build artifacts + production deps
 COPY --from=build /app/dist/ dist/
 COPY --from=build /app/package.json /app/package-lock.json ./
+# Static product site (landing, signup, connect guides) — served by src/routes/site.ts
+COPY public/ public/
 
 # Install build tools for native modules (e.g. bcrypt), install prod deps,
 # then remove build tools to keep the image lean.

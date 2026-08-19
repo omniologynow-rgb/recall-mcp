@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect Recall to any AI</title>
+  <meta name="description" content="Two-minute guides for connecting Recall's portable AI memory to Claude, ChatGPT, Claude Code, Cursor, Windsurf, and any MCP client.">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="/">Recall<span>◆</span></a>
+    <nav>
+      <a href="/signup">Get a key</a>
+      <a href="/connect">Connect</a>
+      <a href="/export">Your data</a>
+      <a href="https://github.com/omniologynow-rgb/recall-mcp">GitHub</a>
+    </nav>
+  </header>
+
+  <h1>Connect your client</h1>
+  <p class="lede">Recall speaks MCP — the open protocol every serious AI client already supports. Pick yours, or use the universal guide for anything not listed (including clients that don't exist yet).</p>
+
+  <p>You'll need an API key — <a href="/signup">get one free</a> if you haven't.</p>
+
+  <div class="client-grid">
+    <a class="client-card" href="/connect/claude"><b>Claude</b><span>claude.ai custom connectors</span></a>
+    <a class="client-card" href="/connect/chatgpt"><b>ChatGPT</b><span>developer-mode connector</span></a>
+    <a class="client-card" href="/connect/claude-code"><b>Claude Code</b><span>one command in the terminal</span></a>
+    <a class="client-card" href="/connect/cursor"><b>Cursor</b><span>mcp.json</span></a>
+    <a class="client-card" href="/connect/windsurf"><b>Windsurf</b><span>mcp_config.json</span></a>
+    <a class="client-card" href="/connect/other-clients"><b>Gemini CLI, Copilot, Cline, Le Chat</b><span>grouped guide</span></a>
+    <a class="client-card" href="/connect/any"><b>Any MCP client</b><span>the universal config — if it speaks MCP, it speaks Recall</span></a>
+  </div>
+
+  <h2>Every guide ends the same way</h2>
+  <div class="test-box">
+    <h3>The 30-second test</h3>
+    <p>Tell your AI: <code class="inline">Remember that my dog is named Biscuit.</code><br>
+    Start a new chat (or a different client). Ask: <code class="inline">What's my dog's name?</code><br>
+    If it says <span class="success">Biscuit</span>, your memory is live everywhere.</p>
+  </div>
+
+  <footer class="site">
+    <p>Your data leaves with you, anytime — <a href="/export">export everything as JSON</a>.</p>
+    <p>Built by the team behind <a href="https://omniology.ai">Omniology</a> · <a href="https://github.com/omniologynow-rgb/recall-mcp">Source on GitHub</a></p>
+  </footer>
+</div>
+<script src="/assets/site.js"></script>
+</body>
+</html>

@@ -30,6 +30,13 @@ import { InMemoryRateLimiter } from './ratelimit/in-memory.js';
 import { recordUsageEvent } from './db/usage.js';
 import { registerApiKeyRoutes } from './routes/api-keys.js';
 import { registerStripeWebhook } from './routes/stripe-webhook.js';
+import { registerSignupRoute } from './routes/signup.js';
+import { registerExportRoute } from './routes/export.js';
+import { registerSiteRoutes } from './routes/site.js';
+import { extractApiKey } from './auth/extract.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
 export interface ServerOptions {
   port?: number | undefined;
@@ -78,9 +85,10 @@ export class RecallServer {
 
   private loadVersion(): string {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const pkg = require('../../package.json');
-      return pkg.version;
+      // dist/server.js → ../package.json (same layout from src/ via tsx)
+      const pkgPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+      return pkg.version || '0.0.0';
     } catch {
       return '0.0.0';
     }
@@ -437,14 +445,16 @@ export class RecallServer {
       }
     });
 
-    // Auth preHandler for /mcp route
+    // Auth preHandler for /mcp route.
+    // Accepts `Authorization: Bearer` (preferred) or `?key=` in the URL — the
+    // latter exists because several hosted connector UIs (claude.ai, ChatGPT
+    // developer mode, Le Chat) accept a server URL with no header fields.
     const authPreHandler = async (request: any, reply: any, done: (err?: Error) => void) => {
-      const authHeader = request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      const apiKey = extractApiKey(request);
+      if (!apiKey) {
         reply.code(401).send({ error: 'Missing or invalid Authorization header' });
         return done();
       }
-      const apiKey = authHeader.slice('Bearer '.length);
       try {
         const authResult = await this.auth.authenticate(apiKey);
         (request.raw as any).auth = { userId: authResult.userId, tier: authResult.tier, keyId: authResult.keyId };
@@ -536,6 +546,12 @@ export class RecallServer {
     // API key management endpoints
     registerApiKeyRoutes(this.fastify, this.db, this.auth, this.logger);
 
+    // Self-serve signup (email → account + first key, shown once)
+    registerSignupRoute(this.fastify, this.db, this.logger);
+
+    // Full-account data export ("your data leaves with you, anytime")
+    registerExportRoute(this.fastify, this.db, this.auth, this.rateLimiter, this.logger);
+
     // Stripe webhook (for tier sync)
     registerStripeWebhook(this.fastify, {
       db: this.db,
@@ -543,10 +559,9 @@ export class RecallServer {
       rawBodyStore,
     });
 
-    // Root redirect to health
-    this.fastify.get('/', async (_request, reply) => {
-      reply.redirect('/health');
-    });
+    // Product site: landing, signup UI, connect guides (replaces the old
+    // '/' → /health redirect; /health remains the operational endpoint)
+    registerSiteRoutes(this.fastify);
   }
 
   private setupGracefulShutdown() {

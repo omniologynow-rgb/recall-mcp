@@ -1,10 +1,11 @@
 {
   "name": "@omniologynow/recall-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "mcpName": "io.github.omniologynow-rgb/recall-mcp",
   "publishConfig": {
     "access": "public"
   },
-  "description": "Persistent semantic memory for AI agents. Per-user partitioning, semantic recall, structured filtering, deduplication, and soft-delete with confirmation.",
+  "description": "Portable AI memory. One living memory every MCP client reads and writes — same memories, same personality, across Claude, ChatGPT, Cursor, and whatever comes next. Yours: exportable, deletable, never trained on.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -39,6 +40,7 @@
   ],
   "files": [
     "dist",
+    "public",
     "supabase/migrations",
     "server.json",
     "README.md",
@@ -47,7 +49,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/omniologynow/recall-mcp.git"
+    "url": "git+https://github.com/omniologynow-rgb/recall-mcp.git"
   },
   "author": "OmniologyNow",
   "license": "ISC",

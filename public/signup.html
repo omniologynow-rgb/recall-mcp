@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Get your Recall key</title>
+  <meta name="description" content="Sign up for Recall — portable AI memory. Free tier: 100 memories, every MCP client.">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="/">Recall<span>◆</span></a>
+    <nav>
+      <a href="/signup">Get a key</a>
+      <a href="/connect">Connect</a>
+      <a href="/export">Your data</a>
+      <a href="https://github.com/omniologynow-rgb/recall-mcp">GitHub</a>
+    </nav>
+  </header>
+
+  <h1>Get your key</h1>
+  <p class="lede">One email, one key, every AI client. Free tier: 100 memories, all clients, no card.</p>
+
+  <form class="signup" id="signup-form">
+    <input type="email" id="signup-email" placeholder="you@example.com" required autocomplete="email">
+    <button class="btn primary" type="submit">Get my key</button>
+  </form>
+  <p class="error-msg" id="signup-error"></p>
+
+  <div class="key-reveal" id="key-reveal">
+    <h2>Your API key — <span class="success">save it now</span></h2>
+    <div class="codeblock">
+      <div class="key-box" id="key-box"></div>
+      <button class="copy" data-copy-target="#key-box">Copy</button>
+    </div>
+    <div class="note">
+      This key is shown <strong>exactly once</strong>. We store only a hash — if you lose it, no one can recover it (you'd rotate to a new key instead). Put it somewhere safe before leaving this page.
+    </div>
+    <h2>Next: connect a client</h2>
+    <div class="client-grid">
+      <a class="client-card" href="/connect/claude"><b>Claude</b><span>claude.ai connectors</span></a>
+      <a class="client-card" href="/connect/chatgpt"><b>ChatGPT</b><span>developer-mode connector</span></a>
+      <a class="client-card" href="/connect/claude-code"><b>Claude Code</b><span>one command</span></a>
+      <a class="client-card" href="/connect/any"><b>Any MCP client</b><span>the universal config</span></a>
+    </div>
+    <p><a href="/connect">All connect guides →</a></p>
+  </div>
+
+  <h2 id="manage">Managing keys</h2>
+  <p>Everything is self-serve over the API using any active key:</p>
+  <div class="codeblock"><pre id="key-mgmt"># issue an additional key (e.g. a dedicated one per client)
+curl -X POST <span class="js-origin">https://recall-mcp.fly.dev</span>/api/keys \
+  -H "Authorization: Bearer recall_live_..." \
+  -H "Content-Type: application/json" -d '{"label":"chatgpt"}'
+
+# list your keys
+curl <span class="js-origin">https://recall-mcp.fly.dev</span>/api/keys \
+  -H "Authorization: Bearer recall_live_..."
+
+# rotate a key (new secret issued, old one revoked, atomically)
+curl -X POST <span class="js-origin">https://recall-mcp.fly.dev</span>/api/keys/&lt;key-id&gt;/rotate \
+  -H "Authorization: Bearer recall_live_..."
+
+# revoke a key
+curl -X DELETE <span class="js-origin">https://recall-mcp.fly.dev</span>/api/keys/&lt;key-id&gt; \
+  -H "Authorization: Bearer recall_live_..."</pre><button class="copy" data-copy-target="#key-mgmt">Copy</button></div>
+
+  <footer class="site">
+    <p>Your data leaves with you, anytime — <a href="/export">export everything as JSON</a>. Never trained on. Deletable for real.</p>
+    <p>Built by the team behind <a href="https://omniology.ai">Omniology</a> · <a href="https://github.com/omniologynow-rgb/recall-mcp">Source on GitHub</a></p>
+  </footer>
+</div>
+<script src="/assets/site.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect Recall to ChatGPT</title>
+  <meta name="description" content="Give ChatGPT a portable memory via a developer-mode MCP connector — the same memory your other AI clients share.">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="/">Recall<span>◆</span></a>
+    <nav>
+      <a href="/signup">Get a key</a>
+      <a href="/connect">Connect</a>
+      <a href="/export">Your data</a>
+      <a href="https://github.com/omniologynow-rgb/recall-mcp">GitHub</a>
+    </nav>
+  </header>
+
+  <h1>Recall + ChatGPT</h1>
+  <p class="lede">ChatGPT's built-in memory stays inside ChatGPT. Recall gives it a memory that also lives in Claude, Cursor, and whatever you use next.</p>
+
+  <h2>What you need</h2>
+  <ul>
+    <li>A Recall API key — <a href="/signup">free in 30 seconds</a></li>
+    <li>A ChatGPT plan with connectors (Plus/Pro/Business) and <b>developer mode</b> enabled</li>
+  </ul>
+
+  <div class="note">ChatGPT's connector dialog has no header field, so your key rides in the URL. Issue a <strong>dedicated key</strong> for it (label it "chatgpt") so you can revoke it independently — see <a href="/signup#manage">managing keys</a>.</div>
+
+  <h2>Steps</h2>
+  <ol class="steps">
+    <li>In ChatGPT, open <b>Settings → Apps &amp; Connectors</b> (name varies slightly by version — look for "Connectors").</li>
+    <li>Under <b>Advanced settings</b>, turn on <b>Developer mode</b>.</li>
+    <li>Click <b>Create</b> (new connector). Name it <code class="inline">Recall</code>.</li>
+    <li>MCP server URL (with your real key):
+      <div class="codeblock"><pre id="cfg"><span class="js-origin">https://recall-mcp.fly.dev</span>/mcp?key=recall_live_YOUR_KEY_HERE</pre><button class="copy" data-copy-target="#cfg">Copy</button></div>
+    </li>
+    <li>Authentication: <b>No authentication</b> (the key in the URL is the auth). Confirm and create.</li>
+    <li>In a new chat, enable the Recall connector from the composer's tools menu (developer-mode connectors are opt-in per conversation).</li>
+  </ol>
+  <p class="muted">OpenAI moves these menus around; if the labels differ, search settings for "connectors" and "developer mode."</p>
+
+  <h2>Make the memory grow</h2>
+  <p>Add a line to ChatGPT's custom instructions so memory compounds without effort:</p>
+  <div class="codeblock"><pre id="prompt">As we talk, save meaningful facts, preferences, and moments with Recall's remember tool; check recall before asking me things I've told you before.</pre><button class="copy" data-copy-target="#prompt">Copy</button></div>
+
+  <div class="test-box">
+    <h3>The 30-second test</h3>
+    <p>Tell ChatGPT: <code class="inline">Remember that my dog is named Biscuit.</code><br>
+    Open Claude (or any other connected client). Ask: <code class="inline">What's my dog's name?</code><br>
+    If it says <span class="success">Biscuit</span> — one memory, two rival AIs, zero copy-paste.</p>
+  </div>
+
+  <footer class="site">
+    <p>Your data leaves with you, anytime — <a href="/export">export everything as JSON</a>.</p>
+    <p>Built by the team behind <a href="https://omniology.ai">Omniology</a> · <a href="https://github.com/omniologynow-rgb/recall-mcp">Source on GitHub</a></p>
+  </footer>
+</div>
+<script src="/assets/site.js"></script>
+</body>
+</html>

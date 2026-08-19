@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your data leaves with you — Recall export</title>
+  <meta name="description" content="Export every Recall memory and persona as JSON, anytime. User-owned memory is the point.">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="/">Recall<span>◆</span></a>
+    <nav>
+      <a href="/signup">Get a key</a>
+      <a href="/connect">Connect</a>
+      <a href="/export">Your data</a>
+      <a href="https://github.com/omniologynow-rgb/recall-mcp">GitHub</a>
+    </nav>
+  </header>
+
+  <h1>Your data leaves with you. Anytime.</h1>
+  <p class="lede">Ownership isn't a feature, it's the point. One call returns everything you've ever stored — every memory, every namespace, every persona — as plain JSON. No ticket, no waiting period, no "contact sales."</p>
+
+  <h2>Export everything</h2>
+  <div class="codeblock"><pre id="export-cmd">curl -o recall-export.json \
+  -H "Authorization: Bearer recall_live_..." \
+  <span class="js-origin">https://recall-mcp.fly.dev</span>/api/export</pre><button class="copy" data-copy-target="#export-cmd">Copy</button></div>
+
+  <p>The response is a single self-describing document:</p>
+  <div class="codeblock"><pre id="export-shape">{
+  "format": "recall.export",
+  "format_version": 1,
+  "exported_at": "2026-08-19T12:00:00.000Z",
+  "account": { "user_id": "…", "email": "…", "tier": "free", "created_at": "…" },
+  "memory_count": 42,
+  "namespaces": ["default", "preferences", "persona"],
+  "memories": [
+    {
+      "id": "…",
+      "namespace": "preferences",
+      "content": "Prefers Python for data analysis.",
+      "metadata": { "source": "conversation" },
+      "created_at": "…",
+      "updated_at": "…"
+    }
+  ]
+}</pre><button class="copy" data-copy-target="#export-shape">Copy</button></div>
+
+  <p class="muted">Personas are memories too — they live in namespaces, so they're always included. Embedding vectors are not exported: they're derivable from content and provider-specific; your content, metadata, and timestamps are the portable truth.</p>
+
+  <h2>Deletion is real, too</h2>
+  <p>The <code class="inline">forget</code> tool deletes by ID instantly, or by query with a two-step preview → confirm flow so nothing bulk-deletes by accident. Deleted means deleted — there is no shadow copy, and your memories are never used to train models.</p>
+
+  <footer class="site">
+    <p>Isolated per account by database row-level security. Never trained on. <a href="/signup">Get a key</a> · <a href="/connect">Connect a client</a></p>
+    <p>Built by the team behind <a href="https://omniology.ai">Omniology</a> · <a href="https://github.com/omniologynow-rgb/recall-mcp">Source on GitHub</a></p>
+  </footer>
+</div>
+<script src="/assets/site.js"></script>
+</body>
+</html>

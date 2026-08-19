@@ -44,6 +44,8 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      - name: Build (the admin-CLI tests execute dist/)
+        run: npm run build
       - name: Run tests
         run: npm test
         env:
@@ -76,7 +78,7 @@ jobs:
           set -e
           for f in supabase/migrations/*.sql; do
             echo "Applying $f..."
-            psql -h localhost -U postgres -d recall_test -f "$f"
+            psql -v ON_ERROR_STOP=1 -h localhost -U postgres -d recall_test -f "$f"
             echo "  ✓ $f applied successfully"
           done
       - name: Verify schema integrity
