@@ -270,8 +270,26 @@ export function validateArgs<T>(schema: z.ZodType<T>, args: unknown): T {
  * Validates a return value against a Zod schema and throws ToolError if it
  * doesn't match (catches unexpected DB/embdedder output).
  */
+/**
+ * Deep-convert every Date to its ISO string (2026-08-18 P0: SDK 1.30 enforces
+ * output schemas, and pg returns timestamptz columns as JS Date objects — the
+ * declared string schemas then reject every read with "expected string,
+ * received Date"). Applied at the validateOutput boundary so EVERY tool,
+ * current and future, serializes consistently.
+ */
+export function serializeDatesDeep(value: unknown): unknown {
+    if (value instanceof Date) return value.toISOString();
+    if (Array.isArray(value)) return value.map(serializeDatesDeep);
+    if (value !== null && typeof value === 'object') {
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = serializeDatesDeep(v);
+        return out;
+    }
+    return value;
+}
+
 export function validateOutput<T>(schema: z.ZodType<T>, value: unknown): T {
-    const result = schema.safeParse(value);
+    const result = schema.safeParse(serializeDatesDeep(value));
     if (!result.success) {
         const firstIssue = result.error.issues[0];
         const message = firstIssue?.message ?? 'Unexpected internal result shape';

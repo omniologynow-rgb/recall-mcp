@@ -102,7 +102,8 @@ export class ForgetTool {
                  LIMIT $4`,
                 [embeddingSql, userId, threshold, limit]
             );
-            return res.rows;
+            // Clamp similarity into the schema's [0,1] (pgvector float error).
+            return res.rows.map((r) => ({ ...r, similarity: Math.min(1, Math.max(0, Number(r.similarity))) }));
         });
 
         if (matches.length === 0) {
