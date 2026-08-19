@@ -70,7 +70,15 @@ export class RecallTool {
                  LIMIT $5`,
                 params
             );
-            return res.rows;
+            // Defensive row hygiene for the 1.30 output-schema contract:
+            // pgvector float error can put 1-(distance) a hair outside [0,1],
+            // and metadata is nullable in old rows — both would fail
+            // validation and kill an otherwise-good read.
+            return res.rows.map((r) => ({
+                ...r,
+                similarity: Math.min(1, Math.max(0, Number(r.similarity))),
+                metadata: r.metadata ?? {},
+            }));
         });
         return results;
     }
