@@ -19,9 +19,19 @@ DROP POLICY IF EXISTS stripe_events_app_access ON stripe_events;
 CREATE POLICY stripe_events_app_access ON stripe_events
   FOR ALL TO recall_app USING (true) WITH CHECK (true);
 
-REVOKE ALL ON stripe_events FROM anon, authenticated;
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;
+-- anon/authenticated are Supabase-managed roles that don't exist on vanilla
+-- Postgres (CI containers, self-hosters) — guard so the migration applies
+-- everywhere. Prod (Supabase) has both roles, so the revokes run there.
+DO $$
+DECLARE r text;
+BEGIN
+  FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+      EXECUTE format('REVOKE ALL ON stripe_events FROM %I', r);
+      EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM %I', r);
+    END IF;
+  END LOOP;
+END $$;
 
 -- Down (reversible)
 -- ALTER TABLE stripe_events NO FORCE ROW LEVEL SECURITY;
