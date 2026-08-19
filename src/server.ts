@@ -86,6 +86,17 @@ export class RecallServer {
     }
   }
 
+  /** Options for a per-request stateless HTTP transport (SDK 1.30 pattern). */
+  private httpTransportOptions(): StreamableHTTPServerTransportOptions {
+    return {
+      // No sessionIdGenerator — stateless mode (each request handled independently)
+      enableJsonResponse: true,
+      enableDnsRebindingProtection: this.options.enableDnsRebindingProtection ?? (getConfig().isDev ? false : true),
+      allowedHosts: this.options.allowedHosts,
+      allowedOrigins: this.options.allowedOrigins,
+    } as any; // Cast to any to bypass exactOptionalPropertyTypes
+  }
+
   private createMcpServer(): McpServer {
     const server = new McpServer(
       { name: 'RecallMCP', version: this.version },
@@ -492,12 +503,15 @@ export class RecallServer {
         ...rateMeta,
       }, 'Rate limit allowed');
 
-      // Handle MCP request via transport
-      const transport = this.transport;
-      if (!transport) {
-        reply.code(500).send({ error: 'Transport not ready' });
-        return;
-      }
+      // Handle MCP request via a FRESH per-request transport + server.
+      //
+      // SDK >=1.30 makes stateless transports single-use: reusing one across
+      // requests throws 'Stateless transport cannot be reused across
+      // requests' inside hono's request listener, which surfaces as an
+      // empty-body HTTP 500 on every /mcp call after the first (live
+      // incident 2026-08-18: engine persona saves all failed HTTP 500).
+      // The documented stateless pattern is a new transport + server per
+      // request; both are lightweight (tool tables + handler closures).
       // Hijack reply so Fastify doesn't try to double-write the response;
       // the MCP SDK's StreamableHTTP transport already writes to reply.raw
       reply.hijack();
@@ -506,7 +520,16 @@ export class RecallServer {
       const requestId = String(request.id || 'unknown');
       (request.raw as any).auth.requestId = requestId;
       await authContext.run({ userId: auth.userId, tier: auth.tier || 'free', requestId, apiKeyId: auth.keyId }, async () => {
-        await (transport as StreamableHTTPServerTransport).handleRequest(request.raw, reply.raw, request.body);
+        const perRequestServer = this.createMcpServer();
+        const perRequestTransport = new StreamableHTTPServerTransport(this.httpTransportOptions());
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await perRequestServer.connect(perRequestTransport as any);
+          await perRequestTransport.handleRequest(request.raw, reply.raw, request.body);
+        } finally {
+          // Best-effort teardown — the transport is single-use by contract.
+          await perRequestTransport.close().catch(() => {});
+        }
       });
     });
 
@@ -563,19 +586,17 @@ export class RecallServer {
       this.transport = new StdioServerTransport();
       this.logger.info('Using stdio transport');
     } else {
-      const transportOptions: StreamableHTTPServerTransportOptions = {
-        // No sessionIdGenerator — stateless mode (each request handled independently)
-        enableJsonResponse: true,
-        enableDnsRebindingProtection: this.options.enableDnsRebindingProtection ?? (getConfig().isDev ? false : true),
-        allowedHosts: this.options.allowedHosts,
-        allowedOrigins: this.options.allowedOrigins,
-      } as any; // Cast to any to bypass exactOptionalPropertyTypes
-      this.transport = new StreamableHTTPServerTransport(transportOptions);
-      this.logger.info('Using HTTP/SSE transport');
+      // HTTP mode: transports are created PER REQUEST in the /mcp handler
+      // (SDK >=1.30 stateless transports are single-use). Nothing to build or
+      // connect at boot.
+      this.transport = null;
+      this.logger.info('Using HTTP/SSE transport (per-request stateless transports)');
     }
 
-    // Connect MCP server to transport
-    await this.mcpServer.connect(this.transport as any);
+    // Connect the shared MCP server only for stdio (long-lived transport).
+    if (this.transportType === 'stdio' && this.transport) {
+      await this.mcpServer.connect(this.transport as any);
+    }
 
     // Set up HTTP routes only for HTTP transport
     this.setupRoutes(this.transportType);
