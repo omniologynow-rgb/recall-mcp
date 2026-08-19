@@ -42,6 +42,14 @@ export class DatabaseClient {
             // SSL for production, but Supabase local doesn't need
             ssl: connectionString.includes('supabase.co') ? { rejectUnauthorized: false } : false,
         });
+        // pg emits 'error' on the pool when an IDLE client dies (server
+        // restart, admin termination). Without a listener, Node treats it as
+        // an unhandled 'error' event and crashes the process. The client is
+        // already discarded by the pool; log-and-continue is correct.
+        this.pool.on('error', (err) => {
+            // eslint-disable-next-line no-console
+            console.error('pg pool idle client error (client discarded):', err.message);
+        });
     }
 
     static async registerVectorTypes(pool: Pool): Promise<void> {
