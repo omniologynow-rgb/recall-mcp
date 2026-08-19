@@ -1,6 +1,10 @@
-# RecallMCP
+# Recall
 
-**Persistent semantic memory as an MCP tool for AI agents.**
+**Portable AI memory — your AI's memory, everywhere you go.**
+
+One living memory every MCP client reads and writes: Claude today, ChatGPT tomorrow, whatever comes next — same memories, same personality, same story. Yours: exportable anytime, deletable for real, never trained on.
+
+**Hosted service:** [recall-mcp.fly.dev](https://recall-mcp.fly.dev) — [get a free key](https://recall-mcp.fly.dev/signup) (100 memories, every client), then follow a [2-minute connect guide](https://recall-mcp.fly.dev/connect) for Claude, ChatGPT, Claude Code, Cursor, Windsurf, or [any MCP client](https://recall-mcp.fly.dev/connect/any). Prefer to run it yourself? See the self-hosting guide below — it's the same open code.
 
 [![License](https://img.shields.io/badge/license-ISC-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20.0.0-339933.svg)](.nvmrc)
@@ -227,7 +231,24 @@ Keys map to a user account and a **tier** that governs rate limits:
 
 Rate limits are enforced per API key using a token-bucket algorithm. Paid tier quotas are currently uniform pending billing-granularity tuning.
 
-> **Note:** API key self-service issuance and management endpoints are in development (planned for a future release). Keys are currently provisioned manually.
+For clients whose connector UI only accepts a URL (claude.ai custom connectors, ChatGPT developer mode, Le Chat), the key may instead ride in the URL as `?key=recall_live_…`. Issue a dedicated key per URL-based client so each can be revoked independently.
+
+### Self-serve signup
+
+`POST /api/signup` with `{ "email": "you@example.com" }` creates a free-tier account and returns the first API key **exactly once** (only a bcrypt hash is stored). A minimal web flow lives at [`/signup`](https://recall-mcp.fly.dev/signup). Guards: per-IP rate limit (`SIGNUP_MAX_PER_IP_HOUR`, default 5), one account per email (409 on duplicate), and a live kill switch (`SIGNUP_ENABLED=false`).
+
+### Key management (self-serve)
+
+All authenticated with any active key:
+
+- `POST /api/keys` — issue an additional key (`{ label?, tier? }`; tier escalation is blocked)
+- `GET /api/keys` — list keys (`?include_revoked=true` for history)
+- `POST /api/keys/:id/rotate` — atomically issue a replacement and revoke the old key
+- `DELETE /api/keys/:id` — revoke (the key in use cannot revoke itself)
+
+### Export — your data leaves with you, anytime
+
+`GET /api/export` returns **everything the account owns** — every memory in every namespace (personas included), with metadata and timestamps — as one JSON document (`format: "recall.export"`). Embedding vectors are excluded: they're derivable and provider-specific. Docs: [`/export`](https://recall-mcp.fly.dev/export).
 
 ## Rate Limiting
 
@@ -323,10 +344,14 @@ For development with hot reload:
 npm run dev
 ```
 
-The server exposes two HTTP endpoints:
+The server exposes:
 - `GET /health` — health check
 - `GET /ready` — readiness check (DB connected)
-- `POST /mcp` — MCP endpoint (Streamable HTTP transport)
+- `POST /mcp` — MCP endpoint (Streamable HTTP transport; auth via `Authorization: Bearer` or `?key=`)
+- `POST /api/signup` — self-serve account + first key
+- `GET|POST|DELETE /api/keys…` — key management
+- `GET /api/export` — full-account JSON export
+- `/`, `/signup`, `/export`, `/connect/*` — the product site and connect guides (static, served from `public/`)
 
 ## Local Development
 
@@ -453,9 +478,15 @@ RecallMCP uses [pino](https://getpino.io/) for structured JSON logging:
 - ✅ Docker and deployment guide (R14–15)
 - ✅ MCP Registry manifest & npm publish prep (R16)
 
+- ✅ Self-serve signup web flow (email → account → key shown once)
+- ✅ Full-account JSON export (`GET /api/export`)
+- ✅ Product site + connect guides for every MCP client (`public/`)
+
 **In development:**
 
 - 🔄 Public user dashboard (usage stats, key management)
+- 🔄 Persona vault (first-class persona document type)
+- 🔄 Journaling kit (continuity prompt + session summaries)
 
 ## License
 

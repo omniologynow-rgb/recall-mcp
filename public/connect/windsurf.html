@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect Recall to Windsurf</title>
+  <meta name="description" content="Give Windsurf's Cascade a persistent, portable memory with one mcp_config.json entry.">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="/">Recall<span>◆</span></a>
+    <nav>
+      <a href="/signup">Get a key</a>
+      <a href="/connect">Connect</a>
+      <a href="/export">Your data</a>
+      <a href="https://github.com/omniologynow-rgb/recall-mcp">GitHub</a>
+    </nav>
+  </header>
+
+  <h1>Recall + Windsurf</h1>
+  <p class="lede">Cascade remembers your conventions and decisions — across sessions, and across every other AI client you connect.</p>
+
+  <h2>What you need</h2>
+  <ul>
+    <li>A Recall API key — <a href="/signup">free in 30 seconds</a></li>
+    <li>Windsurf with MCP enabled (Settings → Cascade → MCP)</li>
+  </ul>
+
+  <h2>Steps</h2>
+  <ol class="steps">
+    <li>Open <code class="inline">~/.codeium/windsurf/mcp_config.json</code> (Windsurf Settings → Cascade → MCP → "Configure" opens it for you).</li>
+    <li>Add the Recall entry:
+      <div class="codeblock"><pre id="cfg">{
+  "mcpServers": {
+    "recall": {
+      "serverUrl": "<span class="js-origin">https://recall-mcp.fly.dev</span>/mcp",
+      "headers": { "Authorization": "Bearer recall_live_YOUR_KEY_HERE" }
+    }
+  }
+}</pre><button class="copy" data-copy-target="#cfg">Copy</button></div>
+    </li>
+    <li>Refresh MCP servers in Windsurf — Recall should list five tools.</li>
+  </ol>
+
+  <h3>If your version doesn't send headers</h3>
+  <p>Older Windsurf builds don't pass <code class="inline">headers</code> to remote servers. Two fallbacks, either works:</p>
+  <div class="codeblock"><pre id="alt">// 1. key-in-URL (issue a dedicated key you can revoke):
+{ "mcpServers": { "recall": {
+  "serverUrl": "<span class="js-origin">https://recall-mcp.fly.dev</span>/mcp?key=recall_live_YOUR_KEY_HERE"
+} } }
+
+// 2. stdio bridge via mcp-remote:
+{ "mcpServers": { "recall": {
+  "command": "npx",
+  "args": ["-y", "mcp-remote", "<span class="js-origin">https://recall-mcp.fly.dev</span>/mcp",
+           "--header", "Authorization: Bearer recall_live_YOUR_KEY_HERE"]
+} } }</pre><button class="copy" data-copy-target="#alt">Copy</button></div>
+
+  <div class="test-box">
+    <h3>The 30-second test</h3>
+    <p>Tell Cascade: <code class="inline">Remember that my dog is named Biscuit.</code><br>
+    Start a new conversation — or a different client entirely. Ask: <code class="inline">What's my dog's name?</code><br>
+    If it says <span class="success">Biscuit</span> — your memory is live everywhere.</p>
+  </div>
+
+  <footer class="site">
+    <p>Your data leaves with you, anytime — <a href="/export">export everything as JSON</a>.</p>
+    <p>Built by the team behind <a href="https://omniology.ai">Omniology</a> · <a href="https://github.com/omniologynow-rgb/recall-mcp">Source on GitHub</a></p>
+  </footer>
+</div>
+<script src="/assets/site.js"></script>
+</body>
+</html>

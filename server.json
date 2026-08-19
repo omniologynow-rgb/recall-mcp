@@ -1,20 +1,29 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.omniologynow-rgb/recall-mcp",
-  "title": "RecallMCP",
-  "description": "Persistent semantic memory for AI agents with per-user partitioning, recall, dedup, and soft-delete.",
-  "version": "0.1.0",
+  "title": "Recall",
+  "description": "Portable AI memory — one living memory shared by every MCP client. Exportable, never trained on.",
+  "version": "0.2.0",
+  "websiteUrl": "https://recall-mcp.fly.dev",
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://recall.example.com/mcp"
+      "url": "https://recall-mcp.fly.dev/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer <your Recall API key> — free at https://recall-mcp.fly.dev/signup",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
     }
   ],
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@omniologynow/recall-mcp",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       }

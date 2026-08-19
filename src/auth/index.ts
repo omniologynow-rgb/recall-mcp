@@ -1,6 +1,7 @@
 import { DatabaseClient } from '../db/client.js';
 import bcrypt from 'bcrypt';
 import { LRUCache } from 'lru-cache';
+import { generateKeyString } from './keygen.js';
 
 export interface AuthResult {
   userId: string;
@@ -117,7 +118,6 @@ export class AuthService {
   }
 
   async generateApiKey(userId: string, fields?: string | { label?: string; tier?: string }): Promise<{ key: string; keyPrefix: string; id: string }> {
-    const suffixChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
     const maxAttempts = 5;
     // Accept both old-style string label and new-style { label, tier } object
     const label = typeof fields === 'string' ? fields : (fields?.label ?? null);
@@ -127,12 +127,8 @@ export class AuthService {
       throw new Error(`invalid tier "${tier}"; must be one of: ${validTiers.join(', ')}`);
     }
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // Generate random suffix
-      let suffix = '';
-      for (let i = 0; i < this.KEY_SUFFIX_LENGTH; i++) {
-        suffix += suffixChars[Math.floor(Math.random() * suffixChars.length)];
-      }
-      const key = this.KEY_PREFIX + suffix;
+      // CSPRNG key generation (shared with signup + key-management routes)
+      const { key } = generateKeyString();
       const keyPrefix = this.extractKeyPrefix(key);
       const hash = await bcrypt.hash(key, 12);
       try {

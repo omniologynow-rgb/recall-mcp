@@ -4,21 +4,11 @@ import type { AuthService } from '../auth/index.js';
 import bcrypt from 'bcrypt';
 import type pino from 'pino';
 
+import { generateKeyString } from '../auth/keygen.js';
+import { extractApiKey } from '../auth/extract.js';
+
 const VALID_TIERS = ['free', 'starter', 'pro', 'team'] as const;
 const TIER_ORDER: Record<string, number> = { free: 0, starter: 1, pro: 2, team: 3 };
-const KEY_PREFIX = 'recall_live_';
-const KEY_SUFFIX_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
-const KEY_SUFFIX_LENGTH = 32;
-const KEY_PREFIX_LENGTH = 16;
-
-function generateKeyString(): { key: string; prefix: string } {
-  let suffix = '';
-  for (let i = 0; i < KEY_SUFFIX_LENGTH; i++) {
-    suffix += KEY_SUFFIX_CHARS[Math.floor(Math.random() * KEY_SUFFIX_CHARS.length)];
-  }
-  const key = KEY_PREFIX + suffix;
-  return { key, prefix: key.slice(0, KEY_PREFIX_LENGTH) };
-}
 
 export function registerApiKeyRoutes(
   fastify: FastifyInstance,
@@ -284,12 +274,11 @@ export function registerApiKeyRoutes(
 // ---------------------------------------------------------------------------
 function authPreHandler(auth: AuthService) {
   return async (request: any, reply: any) => {
-    const authHeader = request.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const apiKey = extractApiKey(request);
+    if (!apiKey) {
       reply.code(401).send({ error: 'Missing or invalid Authorization header' });
       return reply; // returning stops further route handler execution
     }
-    const apiKey = authHeader.slice('Bearer '.length);
     try {
       const authResult = await auth.authenticate(apiKey);
       (request.raw as any)._auth = {

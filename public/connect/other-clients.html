@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect Recall to Gemini CLI, Copilot, Cline, Le Chat</title>
+  <meta name="description" content="Recall connect guides for Gemini CLI, GitHub Copilot (VS Code), Cline, and Mistral Le Chat.">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="/">Recall<span>◆</span></a>
+    <nav>
+      <a href="/signup">Get a key</a>
+      <a href="/connect">Connect</a>
+      <a href="/export">Your data</a>
+      <a href="https://github.com/omniologynow-rgb/recall-mcp">GitHub</a>
+    </nav>
+  </header>
+
+  <h1>Recall + everything else</h1>
+  <p class="lede">Gemini CLI, GitHub Copilot, Cline, and Le Chat — same memory, four more doors. You'll need <a href="/signup">an API key</a>. If your client isn't here either, the <a href="/connect/any">universal guide</a> covers every MCP client ever made (or not yet made).</p>
+
+  <h2>Gemini CLI</h2>
+  <p>Add to <code class="inline">~/.gemini/settings.json</code>:</p>
+  <div class="codeblock"><pre id="gemini">{
+  "mcpServers": {
+    "recall": {
+      "httpUrl": "<span class="js-origin">https://recall-mcp.fly.dev</span>/mcp",
+      "headers": { "Authorization": "Bearer recall_live_YOUR_KEY_HERE" }
+    }
+  }
+}</pre><button class="copy" data-copy-target="#gemini">Copy</button></div>
+  <p class="muted">Verify with <code class="inline">/mcp</code> inside Gemini CLI.</p>
+
+  <h2>GitHub Copilot (VS Code)</h2>
+  <p>Create <code class="inline">.vscode/mcp.json</code> in your workspace (or add via the "MCP: Add Server" command):</p>
+  <div class="codeblock"><pre id="copilot">{
+  "servers": {
+    "recall": {
+      "type": "http",
+      "url": "<span class="js-origin">https://recall-mcp.fly.dev</span>/mcp",
+      "headers": { "Authorization": "Bearer recall_live_YOUR_KEY_HERE" }
+    }
+  }
+}</pre><button class="copy" data-copy-target="#copilot">Copy</button></div>
+  <p class="muted">Tools appear in Copilot Chat's agent mode tool picker.</p>
+
+  <h2>Cline</h2>
+  <p>Cline → MCP Servers → Remote Servers → add name <code class="inline">recall</code> and the URL, or edit <code class="inline">cline_mcp_settings.json</code>:</p>
+  <div class="codeblock"><pre id="cline">{
+  "mcpServers": {
+    "recall": {
+      "type": "streamableHttp",
+      "url": "<span class="js-origin">https://recall-mcp.fly.dev</span>/mcp",
+      "headers": { "Authorization": "Bearer recall_live_YOUR_KEY_HERE" }
+    }
+  }
+}</pre><button class="copy" data-copy-target="#cline">Copy</button></div>
+
+  <h2>Le Chat (Mistral)</h2>
+  <p>Le Chat's connector dialog takes a URL with no header fields, so the key rides in the URL — issue a <strong>dedicated key</strong> (label it "lechat") so you can revoke it independently:</p>
+  <ol class="steps">
+    <li>Le Chat → <b>Connectors</b> (or Intelligence → Connectors) → <b>Add connector → Custom MCP connector</b>.</li>
+    <li>Name it <code class="inline">Recall</code>, paste the URL:
+      <div class="codeblock"><pre id="lechat"><span class="js-origin">https://recall-mcp.fly.dev</span>/mcp?key=recall_live_YOUR_KEY_HERE</pre><button class="copy" data-copy-target="#lechat">Copy</button></div>
+    </li>
+    <li>Enable it in the chat's tools menu.</li>
+  </ol>
+
+  <div class="test-box">
+    <h3>The 30-second test</h3>
+    <p>Tell your AI: <code class="inline">Remember that my dog is named Biscuit.</code><br>
+    Open a different client. Ask: <code class="inline">What's my dog's name?</code><br>
+    If it says <span class="success">Biscuit</span> — your memory is live everywhere.</p>
+  </div>
+
+  <footer class="site">
+    <p>Your data leaves with you, anytime — <a href="/export">export everything as JSON</a>.</p>
+    <p>Built by the team behind <a href="https://omniology.ai">Omniology</a> · <a href="https://github.com/omniologynow-rgb/recall-mcp">Source on GitHub</a></p>
+  </footer>
+</div>
+<script src="/assets/site.js"></script>
+</body>
+</html>

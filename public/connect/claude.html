@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect Recall to Claude</title>
+  <meta name="description" content="Give Claude a permanent, portable memory in two minutes via claude.ai custom connectors.">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="/">Recall<span>◆</span></a>
+    <nav>
+      <a href="/signup">Get a key</a>
+      <a href="/connect">Connect</a>
+      <a href="/export">Your data</a>
+      <a href="https://github.com/omniologynow-rgb/recall-mcp">GitHub</a>
+    </nav>
+  </header>
+
+  <h1>Recall + Claude (claude.ai)</h1>
+  <p class="lede">Give Claude a memory that survives every new chat — and follows you to every other AI.</p>
+
+  <h2>What you need</h2>
+  <ul>
+    <li>A Recall API key — <a href="/signup">free in 30 seconds</a></li>
+    <li>A paid claude.ai plan (custom connectors are available on Pro/Max; on Team/Enterprise an admin may need to add it)</li>
+  </ul>
+
+  <div class="note">The claude.ai connector dialog takes a URL with no header fields, so your key rides in the URL. Issue a <strong>dedicated key</strong> for it (label it "claude") so you can revoke it independently — see <a href="/signup#manage">managing keys</a>.</div>
+
+  <h2>Steps</h2>
+  <ol class="steps">
+    <li>In claude.ai, open <b>Settings → Connectors</b> (under "Extensions and connectors" on some plans).</li>
+    <li>Click <b>Add custom connector</b>.</li>
+    <li>Name it <code class="inline">Recall</code> and paste this URL (with your real key):
+      <div class="codeblock"><pre id="cfg"><span class="js-origin">https://recall-mcp.fly.dev</span>/mcp?key=recall_live_YOUR_KEY_HERE</pre><button class="copy" data-copy-target="#cfg">Copy</button></div>
+    </li>
+    <li>Click <b>Add</b>. No OAuth screen appears — the key is the auth.</li>
+    <li>In a chat, open the <b>search &amp; tools</b> menu and make sure Recall's tools are enabled.</li>
+  </ol>
+  <p class="muted">Claude Desktop picks up the same connector automatically (connectors sync with your claude.ai account). For the terminal, see <a href="/connect/claude-code">Claude Code</a>.</p>
+
+  <h2>Make the memory grow</h2>
+  <p>Add a line like this to your Claude profile preferences so memory compounds without effort:</p>
+  <div class="codeblock"><pre id="prompt">As we talk, save meaningful facts, preferences, and moments with Recall's remember tool; check recall before asking me things I've told you before.</pre><button class="copy" data-copy-target="#prompt">Copy</button></div>
+
+  <div class="test-box">
+    <h3>The 30-second test</h3>
+    <p>Tell Claude: <code class="inline">Remember that my dog is named Biscuit.</code><br>
+    Start a new chat. Ask: <code class="inline">What's my dog's name?</code><br>
+    If it says <span class="success">Biscuit</span> — your memory is live. Now <a href="/connect">connect your other clients</a> to the same key family and they'll know Biscuit too.</p>
+  </div>
+
+  <footer class="site">
+    <p>Your data leaves with you, anytime — <a href="/export">export everything as JSON</a>.</p>
+    <p>Built by the team behind <a href="https://omniology.ai">Omniology</a> · <a href="https://github.com/omniologynow-rgb/recall-mcp">Source on GitHub</a></p>
+  </footer>
+</div>
+<script src="/assets/site.js"></script>
+</body>
+</html>

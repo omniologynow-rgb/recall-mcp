@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect Recall to Claude Code</title>
+  <meta name="description" content="One command gives Claude Code a persistent, portable memory across projects and sessions.">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="/">Recall<span>◆</span></a>
+    <nav>
+      <a href="/signup">Get a key</a>
+      <a href="/connect">Connect</a>
+      <a href="/export">Your data</a>
+      <a href="https://github.com/omniologynow-rgb/recall-mcp">GitHub</a>
+    </nav>
+  </header>
+
+  <h1>Recall + Claude Code</h1>
+  <p class="lede">One command. Claude Code remembers across sessions, projects, and machines — and everything it learns is there in your other AI clients too.</p>
+
+  <h2>What you need</h2>
+  <ul>
+    <li>A Recall API key — <a href="/signup">free in 30 seconds</a></li>
+    <li>Claude Code installed</li>
+  </ul>
+
+  <h2>One command</h2>
+  <div class="codeblock"><pre id="cmd">claude mcp add --transport http recall <span class="js-origin">https://recall-mcp.fly.dev</span>/mcp --header "Authorization: Bearer recall_live_YOUR_KEY_HERE"</pre><button class="copy" data-copy-target="#cmd">Copy</button></div>
+  <p>Add <code class="inline">--scope user</code> to make it available in every project. Verify with <code class="inline">/mcp</code> inside Claude Code — you should see <code class="inline">recall</code> connected with five tools.</p>
+
+  <h2>Or via .mcp.json</h2>
+  <p>To share the config with a project (keeping the secret in an environment variable):</p>
+  <div class="codeblock"><pre id="cfg">{
+  "mcpServers": {
+    "recall": {
+      "type": "http",
+      "url": "<span class="js-origin">https://recall-mcp.fly.dev</span>/mcp",
+      "headers": { "Authorization": "Bearer ${RECALL_API_KEY}" }
+    }
+  }
+}</pre><button class="copy" data-copy-target="#cfg">Copy</button></div>
+
+  <h2>Make the memory grow</h2>
+  <p>Add a line to your <code class="inline">CLAUDE.md</code> so memory compounds without effort:</p>
+  <div class="codeblock"><pre id="prompt">As we work, save durable facts, decisions, and my preferences with Recall's remember tool; check recall before asking me things I've told you before.</pre><button class="copy" data-copy-target="#prompt">Copy</button></div>
+
+  <div class="test-box">
+    <h3>The 30-second test</h3>
+    <p>Tell Claude Code: <code class="inline">Remember that my dog is named Biscuit.</code><br>
+    Open a new session (or a different client entirely). Ask: <code class="inline">What's my dog's name?</code><br>
+    If it says <span class="success">Biscuit</span> — your memory is live everywhere.</p>
+  </div>
+
+  <footer class="site">
+    <p>Your data leaves with you, anytime — <a href="/export">export everything as JSON</a>.</p>
+    <p>Built by the team behind <a href="https://omniology.ai">Omniology</a> · <a href="https://github.com/omniologynow-rgb/recall-mcp">Source on GitHub</a></p>
+  </footer>
+</div>
+<script src="/assets/site.js"></script>
+</body>
+</html>
