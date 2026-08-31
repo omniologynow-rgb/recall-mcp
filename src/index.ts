@@ -21,8 +21,13 @@ async function main() {
   // Embedder
   let embedder;
   if (config.openaiApiKey) {
-    embedder = new OpenAIEmbedder({ apiKey: config.openaiApiKey });
-    logger.info('Using OpenAIEmbedder');
+    embedder = new OpenAIEmbedder({
+      apiKey: config.openaiApiKey,
+      ...(config.openaiBaseUrl ? { baseURL: config.openaiBaseUrl } : {}),
+      ...(config.embeddingModel ? { model: config.embeddingModel } : {}),
+      ...(config.embeddingDimensions ? { dimensions: config.embeddingDimensions } : {}),
+    });
+    logger.info({ baseURL: config.openaiBaseUrl ?? 'api.openai.com', model: config.embeddingModel ?? 'text-embedding-3-small' }, 'Using OpenAIEmbedder');
   } else {
     if (config.isDev) {
       embedder = new MockEmbedder();

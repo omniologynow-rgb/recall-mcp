@@ -19,6 +19,19 @@ DROP POLICY IF EXISTS stripe_events_app_access ON stripe_events;
 CREATE POLICY stripe_events_app_access ON stripe_events
   FOR ALL TO recall_app USING (true) WITH CHECK (true);
 
+-- Local-Postgres compatibility: anon/authenticated exist on Supabase but not
+-- on vanilla Postgres (local deploys, integration tests). Create them as
+-- NOLOGIN shells if absent so the REVOKEs below are valid everywhere.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN
+        CREATE ROLE anon NOLOGIN;
+    END IF;
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN
+        CREATE ROLE authenticated NOLOGIN;
+    END IF;
+END $$;
+
 REVOKE ALL ON stripe_events FROM anon, authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;
